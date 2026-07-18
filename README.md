@@ -59,8 +59,23 @@ Cache<OrderEntity> byCustomer = CacheBuilder.<OrderEntity>newBuilder()
 Given a `List<OrderEntity>` of 5 elements, this produces a cache of size 5 — one entry per
 element, keyed by that element's `customerId`. Resolution order per object: a no-arg method named
 exactly `fieldName` (matches record components), then `getFieldName`/`isFieldName` (JavaBean
-getters), then direct field access as a fallback (works even with no public getter). Throws
-`CacheConfigurationException` if the field can't be resolved at all.
+getters), then direct field access as a fallback (works even with no public getter).
+
+If `fieldName` isn't found directly on the object, its own non-simple fields are searched the
+same way, recursively — so a JPA `@EmbeddedId`-style composite key still works without a dotted
+path:
+
+```java
+class TransactionId { private String referenceId; /* ... */ }
+class TransactionEntity { private TransactionId txnId; private String txnDetails; /* ... */ }
+
+Cache<TransactionEntity> cache = CacheBuilder.<TransactionEntity>newBuilder()
+        .withKeyField("referenceId")   // not a direct field on TransactionEntity — found inside txnId
+        .withLoader(() -> transactions)
+        .buildAndLoad();
+```
+
+Throws `CacheConfigurationException` if the field can't be resolved anywhere in the object graph.
 
 ### Triggering the load
 

@@ -1,10 +1,15 @@
 package com.bbl.cache;
 
 import com.bbl.cache.fixtures.OrderEntity;
+import com.bbl.cache.fixtures.TransactionEntity;
+import com.bbl.cache.fixtures.TransactionId;
 import com.bbl.cache.fixtures.UserDto;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -42,6 +47,24 @@ class FieldKeyExtractorTest {
 
         assertEquals(orders.size(), cache.size());
         assertEquals("o3", cache.getOrThrow("3").getOrderId());
+    }
+
+
+    @Test
+    void getEmbedField_key(){
+        List<TransactionEntity> txn =  List.of(
+                new TransactionEntity(new TransactionId("11","11212"),"ss"),
+                new TransactionEntity(new TransactionId("2222","23213"),"aaa")
+        );
+
+        Cache<TransactionEntity> cache = CacheBuilder.<TransactionEntity>newBuilder().withKeyField("orderStatus").withLoader(()->txn).buildAndLoad();
+
+        assertEquals(txn.size(), cache.size());
+        assertEquals("ss",cache.getOrThrow("11").getTxnDetails());
+        System.out.println(cache.asMap().getClass().getName());
+        System.out.println(cache);
+        System.out.println(cache.asMap());
+
     }
 
     @Test
