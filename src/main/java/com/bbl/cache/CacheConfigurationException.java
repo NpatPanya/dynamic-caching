@@ -5,4 +5,8 @@ public class CacheConfigurationException extends RuntimeException {
     public CacheConfigurationException(String message) {
         super(message);
     }
+
+    public CacheConfigurationException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

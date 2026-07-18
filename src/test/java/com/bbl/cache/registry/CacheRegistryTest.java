@@ -79,6 +79,7 @@ class CacheRegistryTest {
         assertEquals(2, retrieved.getOrThrow("active").size());
     }
 
+
     @Test
     void getList_withScalarRegisteredName_throws() {
         CacheRegistry registry = CacheRegistry.create();

@@ -11,6 +11,10 @@ import java.util.Objects;
  *         .withLoader(userRepository::findAll)
  *         .buildAndLoad();
  * }</pre>
+ *
+ * <p>Instead of a lambda, {@link #withKeyField(String)} lets you name the field/getter to key by
+ * (e.g. {@code "id"}, {@code "customerId"}) and have it read via reflection at load time — handy
+ * when the key field varies by configuration rather than by code path.
  */
 public final class CacheBuilder<V> {
 
@@ -28,6 +32,14 @@ public final class CacheBuilder<V> {
     public CacheBuilder<V> withKeyExtractor(KeyExtractor<? super V> keyExtractor) {
         this.keyExtractor = Objects.requireNonNull(keyExtractor, "keyExtractor");
         return this;
+    }
+
+    /**
+     * Keys by the named field/getter, resolved via reflection at load time, instead of a
+     * hand-written {@link KeyExtractor}. See {@link FieldKeyExtractor} for the resolution order.
+     */
+    public CacheBuilder<V> withKeyField(String fieldName) {
+        return withKeyExtractor(FieldKeyExtractor.of(fieldName));
     }
 
     public CacheBuilder<V> withLoader(CacheLoader<V> loader) {

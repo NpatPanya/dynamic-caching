@@ -31,7 +31,7 @@ mvn install
 
 ```java
 Cache<User> users = CacheBuilder.<User>newBuilder()
-        .withKeyExtractor(User::getId)          // you decide the key — no reflection, no conventions
+        .withKeyExtractor(User::getId)          // you decide the key
         .withLoader(userRepository::findAll)    // called once, synchronously, whenever you trigger load
         .buildAndLoad();
 
@@ -40,8 +40,27 @@ users.getOrThrow("123"); // User, or throws CacheMissException
 users.reload(() -> userRepository.findAll(), User::getId); // clear + repopulate
 ```
 
-Cached values can be anything — a plain object, an immutable `record` DTO, a JPA entity. The
-library never inspects the object; you always supply the key via a `KeyExtractor<T>`.
+Cached values can be anything — a plain object, an immutable `record` DTO, a JPA entity. By
+default you supply the key via a `KeyExtractor<T>` lambda; see below for a reflection-based
+alternative.
+
+### Keying by field name instead of a lambda
+
+`withKeyField(String)` reads a named field/getter off each object via reflection, for cases where
+the key field is config-driven rather than known at the call site:
+
+```java
+Cache<OrderEntity> byCustomer = CacheBuilder.<OrderEntity>newBuilder()
+        .withKeyField("customerId")             // or "orderId" — whichever field you name
+        .withLoader(orderRepository::findAll)
+        .buildAndLoad();
+```
+
+Given a `List<OrderEntity>` of 5 elements, this produces a cache of size 5 — one entry per
+element, keyed by that element's `customerId`. Resolution order per object: a no-arg method named
+exactly `fieldName` (matches record components), then `getFieldName`/`isFieldName` (JavaBean
+getters), then direct field access as a fallback (works even with no public getter). Throws
+`CacheConfigurationException` if the field can't be resolved at all.
 
 ### Triggering the load
 

@@ -5,6 +5,7 @@ import com.bbl.cache.fixtures.PlainPojo;
 import com.bbl.cache.fixtures.UserDto;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,6 +44,17 @@ class ConcurrentMapCacheTest {
         cache.put(order.getOrderId(), order);
 
         assertEquals(Optional.of(order), cache.get("o1"));
+    }
+
+    @Test
+    void listOfJpaEntities_putThenGet_roundTrips() {
+        List<OrderEntity> orderList = List.of(new OrderEntity("o1", "c1"), new OrderEntity("o2", "c2"));
+        Cache<List<OrderEntity>> cache = CacheBuilder.<List<OrderEntity>>newBuilder().build();
+
+        cache.put("orders-for-c1", orderList);
+
+        assertEquals(Optional.of(orderList), cache.get("orders-for-c1"));
+        assertEquals(2, cache.getOrThrow("orders-for-c1").size());
     }
 
     @Test
