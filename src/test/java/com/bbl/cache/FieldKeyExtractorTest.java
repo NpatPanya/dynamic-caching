@@ -7,9 +7,6 @@ import com.bbl.cache.fixtures.UserDto;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -57,14 +54,10 @@ class FieldKeyExtractorTest {
                 new TransactionEntity(new TransactionId("2222","23213"),"aaa")
         );
 
-        Cache<TransactionEntity> cache = CacheBuilder.<TransactionEntity>newBuilder().withKeyField("orderStatus").withLoader(()->txn).buildAndLoad();
+        Cache<TransactionEntity> cache = CacheBuilder.<TransactionEntity>newBuilder().withKeyField("referenceId").withLoader(()->txn).buildAndLoad();
 
         assertEquals(txn.size(), cache.size());
-        assertEquals("ss",cache.getOrThrow("11").getTxnDetails());
-        System.out.println(cache.asMap().getClass().getName());
-        System.out.println(cache);
-        System.out.println(cache.asMap());
-
+        assertEquals("ss", cache.getOrThrow("11212").getTxnDetails());
     }
 
     @Test

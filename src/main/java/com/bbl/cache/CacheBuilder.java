@@ -25,10 +25,15 @@ public final class CacheBuilder<V> {
     private CacheBuilder() {
     }
 
+    /** Starts building a new cache of value type {@code V}. */
     public static <V> CacheBuilder<V> newBuilder() {
         return new CacheBuilder<>();
     }
 
+    /**
+     * Sets the mapping from a cached value to its String key, required by {@link #buildAndLoad()}
+     * (not by {@link #build()} — a bare cache populated only via {@link Cache#put} never needs one).
+     */
     public CacheBuilder<V> withKeyExtractor(KeyExtractor<? super V> keyExtractor) {
         this.keyExtractor = Objects.requireNonNull(keyExtractor, "keyExtractor");
         return this;
@@ -42,11 +47,16 @@ public final class CacheBuilder<V> {
         return withKeyExtractor(FieldKeyExtractor.of(fieldName));
     }
 
+    /**
+     * Sets the data source used by {@link #buildAndLoad()}, or by a later manual
+     * {@link Cache#load}/{@link Cache#reload} call — required by {@link #buildAndLoad()} only.
+     */
     public CacheBuilder<V> withLoader(CacheLoader<V> loader) {
         this.loader = Objects.requireNonNull(loader, "loader");
         return this;
     }
 
+    /** Sizing hint for the backing store; purely a performance tweak, never required. Default 16. */
     public CacheBuilder<V> withInitialCapacity(int initialCapacity) {
         if (initialCapacity < 0) {
             throw new IllegalArgumentException("initialCapacity must be >= 0, was: " + initialCapacity);
@@ -60,7 +70,12 @@ public final class CacheBuilder<V> {
         return new ConcurrentMapCache<>(initialCapacity);
     }
 
-    /** Builds the cache and synchronously populates it via the configured loader/key extractor. */
+    /**
+     * Builds the cache and synchronously populates it via the configured loader/key extractor.
+     *
+     * @throws CacheConfigurationException if {@link #withKeyExtractor}/{@link #withKeyField} or
+     *                                       {@link #withLoader} was never called
+     */
     public Cache<V> buildAndLoad() {
         if (keyExtractor == null) {
             throw new CacheConfigurationException("withKeyExtractor(...) must be set before buildAndLoad()");

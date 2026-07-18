@@ -25,15 +25,29 @@ public final class CacheRegistry {
     private CacheRegistry() {
     }
 
+    /** Creates an empty registry. */
     public static CacheRegistry create() {
         return new CacheRegistry();
     }
 
+    /**
+     * Registers {@code cache} under {@code name} for later retrieval via {@link #get}.
+     *
+     * @throws CacheRegistryException if {@code name} is already registered (under this or
+     *                                 {@link #registerList})
+     */
     public <V> void register(String name, Cache<V> cache, Class<V> valueType) {
         put(name, cache, valueType, false);
     }
 
-    /** Registers a cache whose values are whole lists, e.g. {@code Cache<List<UserDto>>}. */
+    /**
+     * Registers a cache whose values are whole lists, e.g. {@code Cache<List<UserDto>>}, for
+     * later retrieval via {@link #getList}. {@code elementType} is the list's element type
+     * ({@code UserDto.class}), not {@code List.class}.
+     *
+     * @throws CacheRegistryException if {@code name} is already registered (under this or
+     *                                 {@link #register})
+     */
     public <E> void registerList(String name, Cache<List<E>> cache, Class<E> elementType) {
         put(name, cache, elementType, true);
     }
@@ -48,12 +62,23 @@ public final class CacheRegistry {
         }
     }
 
+    /**
+     * Retrieves a cache registered via {@link #register}.
+     *
+     * @throws CacheRegistryException if no cache is registered under {@code name}, or it was
+     *                                 registered with a different value type or via {@link #registerList}
+     */
     @SuppressWarnings("unchecked")
     public <V> Cache<V> get(String name, Class<V> valueType) {
         return (Cache<V>) lookup(name, valueType, false).cache();
     }
 
-    /** Retrieves a cache registered via {@link #registerList}. */
+    /**
+     * Retrieves a cache registered via {@link #registerList}.
+     *
+     * @throws CacheRegistryException if no cache is registered under {@code name}, or it was
+     *                                 registered with a different element type or via {@link #register}
+     */
     @SuppressWarnings("unchecked")
     public <E> Cache<List<E>> getList(String name, Class<E> elementType) {
         return (Cache<List<E>>) lookup(name, elementType, true).cache();
@@ -74,10 +99,12 @@ public final class CacheRegistry {
         return entry;
     }
 
+    /** Returns whether any cache (scalar or list) is registered under {@code name}. */
     public boolean contains(String name) {
         return caches.containsKey(name);
     }
 
+    /** Removes every registration. The underlying {@link Cache} instances themselves are untouched. */
     public void clear() {
         caches.clear();
     }

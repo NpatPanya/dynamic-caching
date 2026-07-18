@@ -37,4 +37,29 @@ class CacheLoaderStartupTest {
         assertEquals(SEED.size(), cache.size());
         assertEquals("b@example.com", cache.getOrThrow("2").email());
     }
+
+    /**
+     * Proves the "fetch from the database now, cache it later" ordering: the cache is built
+     * (empty), a repository call happens and its result is held in a plain variable, and only
+     * afterward — as a separate, later step — is the cache populated from that already-fetched
+     * data. The loader never has to BE the database call; it can just hand back data you already
+     * have.
+     */
+    @Test
+    void repositoryFetchHappensFirst_cacheIsLoadedAfterward_fromAlreadyFetchedData() {
+        Cache<UserDto> cache = CacheBuilder.<UserDto>newBuilder().build();
+        assertEquals(0, cache.size());
+
+        List<UserDto> fetchedFromDatabase = fakeRepositoryFindAll();
+
+        cache.load(() -> fetchedFromDatabase, UserDto::id);
+
+        assertEquals(SEED.size(), cache.size());
+        assertEquals("c@example.com", cache.getOrThrow("3").email());
+    }
+
+    /** Stands in for a repository/DAO call that already happened before caching is considered. */
+    private static List<UserDto> fakeRepositoryFindAll() {
+        return SEED;
+    }
 }

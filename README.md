@@ -124,6 +124,23 @@ registry.registerList("userLists", userLists, UserDto.class);
 Cache<List<UserDto>> retrieved = registry.getList("userLists", UserDto.class);
 ```
 
+## Full worked examples
+
+`src/test/java/com/bbl/cache/example/ExampleUsage.java` narrates every scenario above as runnable
+code, and is exercised by `mvn test` on every build so it can't drift out of date. Read it
+top-to-bottom for a guided tour, or copy individual methods as a starting point. Beyond the basics,
+it covers:
+
+- **`categorizedCachesByServiceApp`** — a realistic segmentation pattern: partition a raw dataset
+  by a category field, cache each segment independently, and keep the resulting caches in a plain
+  `Map<String, Cache<V>>` for lookup by category.
+- **`usingTheCacheAsAPlainMap`** — once populated, `asMap()` behaves like any other `Map`:
+  `entrySet()` iteration, `keySet()`/`values()`, streaming/filtering — it's just unmodifiable
+  (mutate through the `Cache` API, not the map view), and it's a *live* view of the cache.
+- **`readThroughWithFallbackDefault`** — falling back to a default value via `get(key).orElse(...)`
+  when a key isn't cached.
+- **`handlingMissesAndConfigurationErrors`** — the two exceptions to expect and catch.
+
 ## Design notes
 
 - Backed by `ConcurrentHashMap` — safe for the startup write burst followed by concurrent reads.
