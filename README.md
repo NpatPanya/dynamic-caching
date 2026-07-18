@@ -70,6 +70,26 @@ Cache<User> users = registry.get("users", User.class); // throws if name/type mi
 A single cache used at one call site doesn't need the registry — just hold the `Cache<V>` instance
 directly.
 
+### Caching whole lists
+
+`Cache<V>` places no constraint on `V` — it's already fine to cache a whole `List<T>` as a single
+value under one key:
+
+```java
+Cache<List<UserDto>> userLists = CacheBuilder.<List<UserDto>>newBuilder().build();
+userLists.put("active", userRepository.findAllActive());
+```
+
+To register/retrieve a list-valued cache through `CacheRegistry`, use `registerList`/`getList`
+instead of `register`/`get`. A separate pair of methods exists because `Class<List<UserDto>>`
+can't be expressed directly under Java's type erasure — these take the list's *element* type
+instead, so no unchecked cast is needed on your side:
+
+```java
+registry.registerList("userLists", userLists, UserDto.class);
+Cache<List<UserDto>> retrieved = registry.getList("userLists", UserDto.class);
+```
+
 ## Design notes
 
 - Backed by `ConcurrentHashMap` — safe for the startup write burst followed by concurrent reads.
