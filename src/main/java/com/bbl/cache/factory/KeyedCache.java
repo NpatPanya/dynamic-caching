@@ -2,7 +2,12 @@ package com.bbl.cache.factory;
 
 import java.util.Map;
 
-public interface Cache<K, V> {
+/**
+ * A generic key/value read view over an immutable snapshot.
+ * Populated via subclasses of BasicCache and GroupedCache.
+ * Distinct from the String-keyed public {@code com.bbl.cache.Cache}.
+ */
+public interface KeyedCache<K, V> {
 
     V get(K key);
 
@@ -17,15 +22,4 @@ public interface Cache<K, V> {
     boolean isEmpty();
 
     Map<K, V> asMap();
-
-//    void load(Collection<V> collection, Function<V, K> keyExtractor);
-
-//    <T> void load(Collection<T> collection, Function<T, K> keyExtractor, Function<T, V> valueExtractor);
 }
-
-
-
-
-
-
-

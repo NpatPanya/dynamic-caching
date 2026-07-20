@@ -1,12 +1,14 @@
 package com.bbl.cache.factory;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-public class CacheFactory {
+public final class CacheFactory {
 
     private CacheFactory() {
     }
@@ -19,10 +21,7 @@ public class CacheFactory {
                 .collect(Collectors.toUnmodifiableMap(
                         keyExtractor,
                         Function.identity(),
-                        (a, b) -> {
-                            throw new IllegalStateException(
-                                    "Duplicate cache key");
-                        }
+                        throwingMerger()
                 ));
     }
 
@@ -36,10 +35,7 @@ public class CacheFactory {
                 .collect(Collectors.toUnmodifiableMap(
                         keyExtractor,
                         valueExtractor,
-                        (a, b) -> {
-                            throw new IllegalStateException(
-                                    "Duplicate cache key");
-                        }
+                        throwingMerger()
                 ));
     }
 
@@ -49,12 +45,15 @@ public class CacheFactory {
             Function<T, K> keyExtractor) {
 
         return values.stream()
-                .collect(Collectors.groupingBy(
-                        keyExtractor,
-                        Collectors.collectingAndThen(
-                                Collectors.toList(),
-                                List::copyOf
-                        )
+                .collect(Collectors.collectingAndThen(
+                        Collectors.groupingBy(
+                                keyExtractor,
+                                Collectors.collectingAndThen(
+                                        Collectors.toList(),
+                                        List::copyOf
+                                )
+                        ),
+                        Collections::unmodifiableMap
                 ));
     }
 
@@ -64,17 +63,22 @@ public class CacheFactory {
             Function<T, V> valueExtractor) {
 
         return values.stream()
-                .collect(Collectors.groupingBy(
-                        keyExtractor,
-                        Collectors.mapping(
-                                valueExtractor,
-                                Collectors.collectingAndThen(
-                                        Collectors.toList(),
-                                        List::copyOf
+                .collect(Collectors.collectingAndThen(
+                        Collectors.groupingBy(
+                                keyExtractor,
+                                Collectors.mapping(
+                                        valueExtractor,
+                                        Collectors.collectingAndThen(
+                                                Collectors.toList(),
+                                                List::copyOf
+                                        )
                                 )
-                        )
+                        ),
+                        Collections::unmodifiableMap
                 ));
     }
 
-
+    private static <T> BinaryOperator<T> throwingMerger() {
+        return (a, b) -> { throw new IllegalStateException("Duplicate cache key"); };
+    }
 }
