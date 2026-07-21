@@ -7,7 +7,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
-abstract class AbstractMapCache<K, S> implements KeyedCache<K, S> {
+public abstract class AbstractMapCache<K, S> implements KeyedCache<K, S> {
+
 
     protected volatile Map<K, S> storedCache = Map.of();
 

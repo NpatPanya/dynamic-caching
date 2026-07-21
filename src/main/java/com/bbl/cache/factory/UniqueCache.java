@@ -1,5 +1,7 @@
 package com.bbl.cache.factory;
 
+
+
 import java.util.Collection;
 import java.util.Objects;
 import java.util.function.Function;
@@ -34,7 +36,7 @@ import java.util.function.Function;
  * @param <K> cache key type
  * @param <V> cached value type
  */
-public abstract class BasicCache<K, V> extends AbstractMapCache<K, V> {
+public abstract class UniqueCache<K, V> extends AbstractMapCache<K, V> {
 
     /**
      * Loads and replaces the entire cache using the supplied collection.

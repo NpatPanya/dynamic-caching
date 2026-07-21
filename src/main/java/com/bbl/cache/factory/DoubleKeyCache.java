@@ -1,9 +1,12 @@
 package com.bbl.cache.factory;
 
+
+
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+
 /**
  * A cache implementation that stores values using a two-level key structure.
  *
@@ -36,7 +39,7 @@ import java.util.function.Function;
  * @param <K2> secondary unique key within a group
  * @param <V> cached value type
  */
-public abstract class DoubleKeyGroupedCache<K1, K2, V>
+public abstract class DoubleKeyCache<K1, K2, V>
         extends AbstractMapCache<K1, Map<K2, V>> {
 
     /**
@@ -77,13 +80,106 @@ public abstract class DoubleKeyGroupedCache<K1, K2, V>
 
         this.storedCache = CacheFactory.doubleKeysCache(collection, key1Extractor, key2Extractor);
 
-        if(logger().isTraceEnabled()){
+        if (logger().isTraceEnabled()) {
             int totalItem = storedCache.values().stream().mapToInt(Map::size).sum();
 
-            logger().trace("[{}] Loaded {} outer keys and {} cache entries",cacheName(),storedCache.size(),totalItem);
+            logger().trace("[{}] Loaded {} outer keys and {} cache entries", cacheName(), storedCache.size(), totalItem);
 
         }
     }
+
+
+    /**
+     * Loads and replaces the entire cache content using a two-level key
+     * structure and a custom value extractor.
+     *
+     * <p>The supplied collection is transformed into:
+     *
+     * <pre>
+     * Map<K1, Map<K2, V>>
+     * </pre>
+     *
+     * where:
+     *
+     * <ul>
+     *   <li>{@code key1Extractor} determines the outer grouping key</li>
+     *   <li>{@code key2Extractor} determines the inner unique key</li>
+     *   <li>{@code valueExtractor} determines the cached value</li>
+     * </ul>
+     *
+     * <p>This overload is useful when the source element type differs from
+     * the cached value type or when only a subset of the source object is
+     * required at runtime.
+     *
+     * <p>Example:
+     *
+     * <pre>
+     * serviceName
+     *     -> providerResponseCode
+     *         -> systemResponseCode
+     * </pre>
+     *
+     * instead of:
+     *
+     * <pre>
+     * serviceName
+     *     -> providerResponseCode
+     *         -> ResponseMapping
+     * </pre>
+     *
+     * <p>This can reduce memory consumption by storing only the required
+     * value rather than the entire source object.
+     *
+     * <p>Duplicate combinations of {@code K1} and {@code K2} are not
+     * allowed. If multiple elements resolve to the same key pair,
+     * cache construction fails with an {@link IllegalStateException}.
+     *
+     * <p>Existing cache content is atomically replaced after the new cache
+     * structure has been successfully built.
+     *
+     * @param collection source data used to populate the cache
+     * @param key1Extractor extractor for the outer grouping key
+     * @param key2Extractor extractor for the inner unique key
+     * @param valueExtractor extractor for the cached value
+     * @param <T> source element type
+     */
+
+    protected <T> void load(
+            Collection<T> collection,
+            Function<T, K1> key1Extractor,
+            Function<T, K2> key2Extractor,
+            Function<T, V> valueExtractor) {
+
+        validate(collection, key1Extractor);
+
+        Objects.requireNonNull(
+                key2Extractor,
+                "key2Extractor must not be null");
+
+        Objects.requireNonNull(
+                valueExtractor,
+                "valueExtractor must not be null");
+
+        this.storedCache = CacheFactory.doubleKeysCache(
+                collection,
+                key1Extractor,
+                key2Extractor,
+                valueExtractor);
+
+        if (logger().isTraceEnabled()) {
+            int totalItem = storedCache.values()
+                    .stream()
+                    .mapToInt(Map::size)
+                    .sum();
+
+            logger().trace(
+                    "[{}] Loaded {} outer keys and {} cache entries",
+                    cacheName(),
+                    storedCache.size(),
+                    totalItem);
+        }
+    }
+
 
     /**
      * Retrieves a value using both cache keys.

@@ -267,6 +267,82 @@ public final class CacheFactory {
                 ));
     }
 
+    /**
+     * Creates an immutable two-level grouped cache structure using
+     * independent value extraction.
+     *
+     * <p>The supplied collection is transformed into:
+     *
+     * <pre>
+     * Map<K1, Map<K2, V>>
+     * </pre>
+     *
+     * where:
+     *
+     * <ul>
+     *     <li>{@code key1Extractor} produces the outer grouping key</li>
+     *     <li>{@code key2Extractor} produces the inner unique key</li>
+     *     <li>{@code valueExtractor} produces the cached value</li>
+     * </ul>
+     *
+     * <p>This overload is useful when the source object and cache value
+     * are different types.
+     *
+     * <p>Example:
+     *
+     * <pre>
+     * serviceName
+     *     -> providerResponseCode
+     *         -> systemResponseCode
+     * </pre>
+     *
+     * <p>instead of:
+     *
+     * <pre>
+     * serviceName
+     *     -> providerResponseCode
+     *         -> AnygwResponseMapping
+     * </pre>
+     *
+     * <p>Duplicate combinations of {@code K1} and {@code K2} are not
+     * permitted. Cache creation fails if more than one entry resolves to
+     * the same key pair.
+     *
+     * <p>The returned outer map and all nested maps are immutable.
+     *
+     * @param values source collection
+     * @param key1Extractor function that derives the outer grouping key
+     * @param key2Extractor function that derives the inner unique key
+     * @param valueExtractor function that derives the cached value
+     * @param <T> source element type
+     * @param <K1> outer grouping key type
+     * @param <K2> inner unique key type
+     * @param <V> cached value type
+     * @return immutable two-level grouped cache
+     * @throws IllegalStateException if duplicate key pairs are encountered
+     */
+    public static <T, K1, K2, V> Map<K1, Map<K2, V>> doubleKeysCache(
+            Collection<T> values,
+            Function<T, K1> key1Extractor,
+            Function<T, K2> key2Extractor,
+            Function<T, V> valueExtractor) {
+
+        return values.stream()
+                .collect(Collectors.collectingAndThen(
+                        Collectors.groupingBy(
+                                key1Extractor,
+                                Collectors.collectingAndThen(
+                                        Collectors.toMap(
+                                                key2Extractor,
+                                                valueExtractor,
+                                                throwingMerger()
+                                        ),
+                                        Collections::unmodifiableMap
+                                )
+                        ),
+                        Collections::unmodifiableMap
+                ));
+    }
 
     /**
      * Creates a merge function that rejects duplicate keys during map

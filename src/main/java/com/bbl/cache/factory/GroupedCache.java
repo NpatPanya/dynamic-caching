@@ -1,5 +1,6 @@
 package com.bbl.cache.factory;
 
+
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -18,7 +19,7 @@ import java.util.function.Function;
  * <p>This cache is intended for scenarios where multiple values may be
  * associated with the same cache key.
  *
- * <p>Unlike {@link BasicCache}, duplicate keys are expected and all values
+ * <p>Unlike {@link UniqueCache}, duplicate keys are expected and all values
  * belonging to the same key are retained within an immutable list.
  *
  * <p>Example:
