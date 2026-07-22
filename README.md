@@ -1,15 +1,14 @@
 # dynamic-caching
 
-A minimal, zero-dependency Java library for caching data at application startup — works the same
-whether you're on Spring, Jakarta EE, Micronaut, Quarkus, or plain Java SE.
-
-The core library has **no framework dependency**. You decide how objects get loaded and how they
-get keyed; the library just holds them in a thread-safe, `String`-keyed cache.
+A small Java library for holding startup-loaded reference data in memory as immutable,
+thread-safe map snapshots — no TTL, no eviction, no async loading. You load a collection once
+(typically at application startup) and read from it concurrently afterward.
 
 ## Requirements
 
 - Java 17+
-- No runtime dependencies
+- `org.apache.logging.log4j:log4j-core` (each cache logs through an injected `Logger`)
+- `jakarta.enterprise.cdi-api` (example beans are CDI-managed; the core library itself has no CDI dependency)
 
 ## Install
 
@@ -27,126 +26,107 @@ mvn install
 </dependency>
 ```
 
-## Usage
+## Core concepts
+
+The library models three cache "shapes", all built on the same immutable-snapshot approach:
+
+| Shape | Structure | Use case |
+|---|---|---|
+| `UniqueCache<K, V>` | `Map<K, V>` | one value per key — reference data |
+| `GroupedCache<K, V>` | `Map<K, List<V>>` | one-to-many — all values sharing a key |
+| `DoubleKeyCache<K1, K2, V>` | `Map<K1, Map<K2, V>>` | two-level lookup, e.g. group then unique key within group |
+
+Each shape is `final` (not meant to be subclassed) and is constructed through `CacheFacade`, which
+lets a single application bean hold several cache shapes side by side under one registry instead of
+forcing inheritance from a single base cache class:
 
 ```java
-Cache<User> users = CacheBuilder.<User>newBuilder()
-        .withKeyExtractor(User::getId)          // you decide the key
-        .withLoader(userRepository::findAll)    // called once, synchronously, whenever you trigger load
-        .buildAndLoad();
+private final CacheFacade caches = new CacheFacade("ProviderCatalogCache", log);
 
-users.get("123");        // Optional<User>
-users.getOrThrow("123"); // User, or throws CacheMissException
-users.reload(() -> userRepository.findAll(), User::getId); // clear + repopulate
+private final UniqueCache<String, Provider> byId = caches.uniqueCache("byId");
+private final GroupedCache<String, Provider> byCountry = caches.groupedCache("byCountry");
+private final DoubleKeyCache<String, String, Provider> byServiceProvider =
+        caches.doubleKeyCache("byServiceProvider");
 ```
 
-Cached values can be anything — a plain object, an immutable `record` DTO, a JPA entity. By
-default you supply the key via a `KeyExtractor<T>` lambda; see below for a reflection-based
-alternative.
+`CacheFacade` enforces unique component names within the bean and provides cross-cutting
+operations across all of a bean's caches: `clearAll()`, `sizes()`, `totalSize()`, `names()`.
 
-### Keying by field name instead of a lambda
+### Loading data: stage, then publish
 
-`withKeyField(String)` reads a named field/getter off each object via reflection, for cases where
-the key field is config-driven rather than known at the call site:
+Each cache separates *building* a snapshot from *publishing* it:
+
+- `stage(collection, keyExtractor[, valueExtractor])` builds and returns a new immutable snapshot
+  without touching the live cache. Throws `IllegalStateException` on a duplicate key.
+- `publish(snapshot)` atomically swaps the live snapshot in with a single volatile write. Cannot throw.
+- `load(...)` is a convenience for `publish(stage(...))` — build and publish in one call.
+
+Separating the two matters when a bean owns multiple cache views that must refresh together:
+stage all of them first (so any duplicate-key failure aborts before anything is published), then
+publish all of them, so no view is ever left half-updated relative to the others:
 
 ```java
-Cache<OrderEntity> byCustomer = CacheBuilder.<OrderEntity>newBuilder()
-        .withKeyField("customerId")             // or "orderId" — whichever field you name
-        .withLoader(orderRepository::findAll)
-        .buildAndLoad();
+public void refresh(List<String> serviceNames) {
+    List<Provider> src = List.copyOf(repo.findByServiceNames(serviceNames)); // materialize once
+
+    var idMap = byId.stage(src, Provider::getId);
+    var countryMap = byCountry.stage(src, Provider::getCountry);
+    var svcProvMap = byServiceProvider.stage(src, Provider::getServiceName, Provider::getId);
+
+    byId.publish(idMap);
+    byCountry.publish(countryMap);
+    byServiceProvider.publish(svcProvMap);
+}
 ```
 
-Given a `List<OrderEntity>` of 5 elements, this produces a cache of size 5 — one entry per
-element, keyed by that element's `customerId`. Resolution order per object: a no-arg method named
-exactly `fieldName` (matches record components), then `getFieldName`/`isFieldName` (JavaBean
-getters), then direct field access as a fallback (works even with no public getter).
-
-If `fieldName` isn't found directly on the object, its own non-simple fields are searched the
-same way, recursively — so a JPA `@EmbeddedId`-style composite key still works without a dotted
-path:
+If the source and cached value types differ, pass a `valueExtractor` alongside the key
+extractor(s) — every shape has an overload for this:
 
 ```java
-class TransactionId { private String referenceId; /* ... */ }
-class TransactionEntity { private TransactionId txnId; private String txnDetails; /* ... */ }
-
-Cache<TransactionEntity> cache = CacheBuilder.<TransactionEntity>newBuilder()
-        .withKeyField("referenceId")   // not a direct field on TransactionEntity — found inside txnId
-        .withLoader(() -> transactions)
-        .buildAndLoad();
+GroupedCache<String, String> countryToServiceNames = caches.groupedCache("countryToServiceNames");
+countryToServiceNames.load(providers, Provider::getCountry, Provider::getServiceName);
 ```
 
-Throws `CacheConfigurationException` if the field can't be resolved anywhere in the object graph.
+### Reading
 
-### Triggering the load
-
-`CacheBuilder` doesn't know or care about your framework's startup lifecycle. Call
-`buildAndLoad()` (or `build()` followed by `cache.load(...)`) from whichever hook your framework
-gives you:
-
-- Spring: `@PostConstruct` or an `ApplicationRunner` bean
-- Jakarta EE / servlets: `ServletContextListener#contextInitialized`
-- Micronaut / Quarkus: a startup event listener
-- Plain Java SE: the first line of `main()`
-
-### Multiple caches
-
-For apps that bootstrap several independently-typed caches and look them up by name, use
-`CacheRegistry` instead of hand-rolling a `Map<String, Cache<?>>`:
+Reads go directly through the typed field, not through `CacheFacade`:
 
 ```java
-CacheRegistry registry = CacheRegistry.create();
-registry.register("users", usersCache, User.class);
-registry.register("orders", ordersCache, Order.class);
-
-Cache<User> users = registry.get("users", User.class); // throws if name/type mismatch
+Provider p = byId.get("p-1");                  // null if absent
+List<Provider> inUs = byCountry.get("US");      // empty list if absent, never null
+Provider match = byServiceProvider.get("svc", "p-1");
 ```
 
-A single cache used at one call site doesn't need the registry — just hold the `Cache<V>` instance
-directly.
-
-### Caching whole lists
-
-`Cache<V>` places no constraint on `V` — it's already fine to cache a whole `List<T>` as a single
-value under one key:
-
-```java
-Cache<List<UserDto>> userLists = CacheBuilder.<List<UserDto>>newBuilder().build();
-userLists.put("active", userRepository.findAllActive());
-```
-
-To register/retrieve a list-valued cache through `CacheRegistry`, use `registerList`/`getList`
-instead of `register`/`get`. A separate pair of methods exists because `Class<List<UserDto>>`
-can't be expressed directly under Java's type erasure — these take the list's *element* type
-instead, so no unchecked cast is needed on your side:
-
-```java
-registry.registerList("userLists", userLists, UserDto.class);
-Cache<List<UserDto>> retrieved = registry.getList("userLists", UserDto.class);
-```
+`getOrDefault(key, def)` and `containsKey(key)` are also available on every shape.
 
 ## Full worked examples
 
-`src/test/java/com/bbl/cache/example/ExampleUsage.java` narrates every scenario above as runnable
-code, and is exercised by `mvn test` on every build so it can't drift out of date. Read it
-top-to-bottom for a guided tour, or copy individual methods as a starting point. Beyond the basics,
-it covers:
+- `src/main/java/com/bbl/cache/example/ProviderCatalogCache.java` — a single bean holding all
+  three shapes side by side, populated from one source fetch with failure-atomic refresh.
+- `src/main/java/com/bbl/cache/example/CompositeDoubleKeyCacheUsage.java` — a `DoubleKeyCache`
+  used on its own inside a bean.
 
-- **`categorizedCachesByServiceApp`** — a realistic segmentation pattern: partition a raw dataset
-  by a category field, cache each segment independently, and keep the resulting caches in a plain
-  `Map<String, Cache<V>>` for lookup by category.
-- **`usingTheCacheAsAPlainMap`** — once populated, `asMap()` behaves like any other `Map`:
-  `entrySet()` iteration, `keySet()`/`values()`, streaming/filtering — it's just unmodifiable
-  (mutate through the `Cache` API, not the map view), and it's a *live* view of the cache.
-- **`readThroughWithFallbackDefault`** — falling back to a default value via `get(key).orElse(...)`
-  when a key isn't cached.
-- **`handlingMissesAndConfigurationErrors`** — the two exceptions to expect and catch.
+These example files intentionally reference illustrative entity/repository types
+(`src/main/java/com/bbl/cache/example/entity/`) that model a plausible caller, not the library's
+own dependencies, and are excluded from the module's own build (see `pom.xml`'s
+`maven-compiler-plugin` exclude and `docs/cache-registry-design.md`). Read them for the pattern,
+don't expect them to compile standalone.
+
+For runnable, test-verified usage, see `src/test/java/com/bbl/cache/registry/`
+(`UniqueCacheTest`, `GroupedCacheTest`, `DoubleKeyCacheTest`, `CacheFacadeTest`,
+`MultiShapeCacheTest`).
 
 ## Design notes
 
-- Backed by `ConcurrentHashMap` — safe for the startup write burst followed by concurrent reads.
-- `reload()` does a simple clear-then-repopulate; readers may transiently see fewer entries during
-  a reload. Acceptable for the startup-cache use case this library targets.
-- Out of scope for v1: TTL/eviction, async loading, framework-specific auto-loader modules.
+See `docs/cache-registry-design.md` for the full design rationale (why the shapes are `final`
+and constructed via a facade rather than subclassed, why `stage`/`publish` are split, atomicity
+guarantees, etc.).
+
+- Backed by `Collectors.toUnmodifiableMap` / immutable `List.copyOf` snapshots — safe for the
+  startup write burst followed by concurrent reads.
+- `publish()` is a single `volatile` field write and cannot throw; a failed `stage()` never
+  affects the live cache.
+- Out of scope: TTL/eviction, async/background loading, partial/incremental updates.
 
 ## Testing
 

@@ -41,12 +41,20 @@ public class ProviderCatalogCache {
     private final UniqueCache<String, Provider> byId =
             caches.uniqueCache("byId");
 
+    private final UniqueCache<String, String> byIdExtractedValue =
+            caches.uniqueCache("byIdExtractedValue");
+
     private final GroupedCache<String, Provider> byCountry =
             caches.groupedCache("byCountry");
 
+    private final GroupedCache<String, String> byCountryExtractedValue =
+            caches.groupedCache("byCountryExtractedValue");
+
     private final DoubleKeyCache<String, String, Provider> byServiceProvider =
             caches.doubleKeyCache("byServiceProvider");
-    
+
+    private final DoubleKeyCache<String, String, String> byServiceProviderExtractedValue =
+            caches.doubleKeyCache("byServiceProviderExtractedValue");
 
 
     private ProviderRepository repo;
@@ -54,10 +62,10 @@ public class ProviderCatalogCache {
     public ProviderCatalogCache() {
     }
 
-     @Inject
-     public ProviderCatalogCache(ProviderRepository repo) {
-         this.repo = repo;
-     }
+    @Inject
+    public ProviderCatalogCache(ProviderRepository repo) {
+        this.repo = repo;
+    }
 
     /**
      * Refreshes all three cache views from a single fetch, with failure-atomic semantics.
@@ -82,8 +90,11 @@ public class ProviderCatalogCache {
 
         // 2. Build all snapshots (any dup-key throws here, before any publish)
         var idMap = byId.stage(src, Provider::getId);
+        var idExtractedValueMap = byIdExtractedValue.stage(src, Provider::getId, Provider::getServiceName);
         var countryMap = byCountry.stage(src, Provider::getCountry);
+        var countryExtractedValue = byCountryExtractedValue.stage(src, Provider::getCountry, Provider::getServiceName);
         var svcProvMap = byServiceProvider.stage(src, Provider::getServiceName, Provider::getId);
+        var svcProvMapExtractedValue = byServiceProviderExtractedValue.stage(src, Provider::getServiceName, Provider::getCountry, Provider::getId);
 
         // 3. Publish — cannot throw; all views advance together
         byId.publish(idMap);
