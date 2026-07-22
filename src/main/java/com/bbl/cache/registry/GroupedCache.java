@@ -1,9 +1,11 @@
 package com.bbl.cache.registry;
 
-import com.bbl.gw.config.cache.support.CacheFactory;
+import com.bbl.cache.support.CacheFactory;
+import org.apache.logging.log4j.Logger;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -41,11 +43,16 @@ import java.util.function.Function;
  * @param <K> grouping key type
  * @param <V> cached value type
  */
-public abstract class GroupedCache<K, V>
+public final class GroupedCache<K, V>
         extends AbstractMapCache<K, List<V>> {
 
+    public GroupedCache(String name, Logger logger) {
+        super(name, logger);
+    }
+
     /**
-     * Loads and replaces the entire cache using the supplied collection.
+     * Builds (but does not publish) a new cache snapshot from the supplied
+     * collection.
      *
      * <p>The provided collection is transformed into:
      *
@@ -63,21 +70,18 @@ public abstract class GroupedCache<K, V>
      * <p>All elements producing the same key are grouped into an immutable
      * list associated with that key.
      *
-     * <p>Existing cache content is replaced only after the new cache has
-     * been successfully constructed.
-     *
      * @param collection source data used to populate the cache
      * @param keyExtractor function used to derive the grouping key
+     * @return the built, unpublished snapshot
      */
-    protected void load(Collection<V> collection, Function<V, K> keyExtractor) {
+    public Map<K, List<V>> stage(Collection<V> collection, Function<V, K> keyExtractor) {
         validate(collection, keyExtractor);
-        this.storedCache = CacheFactory.groupCache(collection, keyExtractor);
-        logLoader();
+        return CacheFactory.groupCache(collection, keyExtractor);
     }
 
     /**
-     * Loads and replaces the entire cache using independently extracted
-     * keys and values.
+     * Builds (but does not publish) a new cache snapshot using independently
+     * extracted keys and values.
      *
      * <p>The provided collection is transformed into:
      *
@@ -98,6 +102,51 @@ public abstract class GroupedCache<K, V>
      * <p>This overload is useful when the source object and cached value
      * differ.
      *
+     * @param collection source data used to populate the cache
+     * @param keyExtractor function used to derive the grouping key
+     * @param valueExtractor function used to derive the cached value
+     * @param <T> source collection element type
+     * @return the built, unpublished snapshot
+     */
+    public <T> Map<K, List<V>> stage(Collection<T> collection, Function<T, K> keyExtractor, Function<T, V> valueExtractor) {
+        validate(collection, keyExtractor);
+        Objects.requireNonNull(valueExtractor, "valueExtractor must not be null");
+        return CacheFactory.groupCache(collection, keyExtractor, valueExtractor);
+    }
+
+    /**
+     * Publishes a previously staged snapshot, atomically replacing the
+     * current cache content, and emits the load trace line.
+     *
+     * @param snapshot the snapshot built by {@link #stage}
+     */
+    public void publish(Map<K, List<V>> snapshot) {
+        super.publish(snapshot);
+        logLoad();
+    }
+
+    /**
+     * Loads and replaces the entire cache using the supplied collection.
+     *
+     * <p>Convenience method equivalent to {@code publish(stage(collection, keyExtractor))}.
+     *
+     * <p>Existing cache content is replaced only after the new cache has
+     * been successfully constructed.
+     *
+     * @param collection source data used to populate the cache
+     * @param keyExtractor function used to derive the grouping key
+     */
+    public void load(Collection<V> collection, Function<V, K> keyExtractor) {
+        publish(stage(collection, keyExtractor));
+    }
+
+    /**
+     * Loads and replaces the entire cache using independently extracted
+     * keys and values.
+     *
+     * <p>Convenience method equivalent to
+     * {@code publish(stage(collection, keyExtractor, valueExtractor))}.
+     *
      * <p>Existing cache content is replaced only after the new cache has
      * been successfully constructed.
      *
@@ -106,30 +155,27 @@ public abstract class GroupedCache<K, V>
      * @param valueExtractor function used to derive the cached value
      * @param <T> source collection element type
      */
-    protected <T> void load(Collection<T> collection, Function<T, K> keyExtractor, Function<T, V> valueExtractor) {
-        validate(collection, keyExtractor);
-        Objects.requireNonNull(valueExtractor, "valueExtractor must not be null");
-        this.storedCache = CacheFactory.groupCache(collection, keyExtractor, valueExtractor);
-        logLoader();
+    public <T> void load(Collection<T> collection, Function<T, K> keyExtractor, Function<T, V> valueExtractor) {
+        publish(stage(collection, keyExtractor, valueExtractor));
     }
 
     /**
-     * Retrieves all values associat*d with the supplied key.
+     * Retrieves all values associated with the supplied key.
      *
-     * <p>*f the key does not exist, an empty*immutable list is returned.
+     * <p>If the key does not exist, an empty immutable list is returned.
      *
-     * *p>This method never returns {@code*null}.
+     * <p>This method never returns {@code null}.
      *
-     * @param key grouping k*y
-     * @return immutable list of val*es associated with the key,
-     *    *    or an empty list when no mappi*g exists
+     * @param key grouping key
+     * @return immutable list of values associated with the key,
+     *         or an empty list when no mapping exists
      */
     @Override
     public List<V> get(K key) {
         return storedCache.getOrDefault(key, List.of());
     }
 
-    private void logLoader() {
+    private void logLoad() {
         if (logger().isTraceEnabled()) {
             logger().trace("[{}] Loaded {} cache entries", cacheName(), storedCache.size());
         }

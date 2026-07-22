@@ -1,8 +1,10 @@
 package com.bbl.cache.registry;
 
-import com.bbl.gw.config.cache.support.CacheFactory;
+import com.bbl.cache.support.CacheFactory;
+import org.apache.logging.log4j.Logger;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -36,10 +38,15 @@ import java.util.function.Function;
  * @param <K> cache key type
  * @param <V> cached value type
  */
-public abstract class UniqueCache<K, V> extends AbstractMapCache<K, V> {
+public final class UniqueCache<K, V> extends AbstractMapCache<K, V> {
+
+    public UniqueCache(String name, Logger logger) {
+        super(name, logger);
+    }
 
     /**
-     * Loads and replaces the entire cache using the supplied collection.
+     * Builds (but does not publish) a new cache snapshot from the supplied
+     * collection.
      *
      * <p>The provided {@code keyExtractor} is used to derive a unique cache key
      * for each element in the collection. The original element itself becomes
@@ -55,23 +62,20 @@ public abstract class UniqueCache<K, V> extends AbstractMapCache<K, V> {
      * the same key, cache construction fails with an
      * {@link IllegalStateException}.
      *
-     * <p>Existing cache content is replaced only after the new cache has been
-     * successfully constructed.
-     *
      * @param collection source data used to populate the cache
      * @param keyExtractor function used to derive the cache key
+     * @return the built, unpublished snapshot
      */
-    protected void load(
+    public Map<K, V> stage(
             Collection<V> collection,
             Function<V, K> keyExtractor) {
         validate(collection, keyExtractor);
-        this.storedCache = CacheFactory.uniqueCache(collection, keyExtractor);
-        logLoader();
+        return CacheFactory.uniqueCache(collection, keyExtractor);
     }
 
     /**
-     * Loads and replaces the entire cache using independently extracted
-     * keys and values.
+     * Builds (but does not publish) a new cache snapshot using independently
+     * extracted keys and values.
      *
      * <p>This overload allows the source object and cached value to differ.
      *
@@ -91,6 +95,56 @@ public abstract class UniqueCache<K, V> extends AbstractMapCache<K, V> {
      * the same key, cache construction fails with an
      * {@link IllegalStateException}.
      *
+     * @param collection source data used to populate the cache
+     * @param keyExtractor function used to derive the cache key
+     * @param valueExtractor function used to derive the cached value
+     * @param <T> source collection element type
+     * @return the built, unpublished snapshot
+     */
+    public <T> Map<K, V> stage(
+            Collection<T> collection,
+            Function<T, K> keyExtractor,
+            Function<T, V> valueExtractor) {
+        validate(collection, keyExtractor);
+        Objects.requireNonNull(valueExtractor, "valueExtractor must not be null");
+        return CacheFactory.uniqueCache(collection, keyExtractor, valueExtractor);
+    }
+
+    /**
+     * Publishes a previously staged snapshot, atomically replacing the
+     * current cache content, and emits the load trace line.
+     *
+     * @param snapshot the snapshot built by {@link #stage}
+     */
+    public void publish(Map<K, V> snapshot) {
+        super.publish(snapshot);
+        logLoad();
+    }
+
+    /**
+     * Loads and replaces the entire cache using the supplied collection.
+     *
+     * <p>Convenience method equivalent to {@code publish(stage(collection, keyExtractor))}.
+     *
+     * <p>Existing cache content is replaced only after the new cache has been
+     * successfully constructed.
+     *
+     * @param collection source data used to populate the cache
+     * @param keyExtractor function used to derive the cache key
+     */
+    public void load(
+            Collection<V> collection,
+            Function<V, K> keyExtractor) {
+        publish(stage(collection, keyExtractor));
+    }
+
+    /**
+     * Loads and replaces the entire cache using independently extracted
+     * keys and values.
+     *
+     * <p>Convenience method equivalent to
+     * {@code publish(stage(collection, keyExtractor, valueExtractor))}.
+     *
      * <p>Existing cache content is replaced only after the new cache has been
      * successfully constructed.
      *
@@ -99,14 +153,11 @@ public abstract class UniqueCache<K, V> extends AbstractMapCache<K, V> {
      * @param valueExtractor function used to derive the cached value
      * @param <T> source collection element type
      */
-    protected <T> void load(
+    public <T> void load(
             Collection<T> collection,
             Function<T, K> keyExtractor,
             Function<T, V> valueExtractor) {
-        validate(collection, keyExtractor);
-        Objects.requireNonNull(valueExtractor, "valueExtractor must not be null");
-        this.storedCache = CacheFactory.uniqueCache(collection, keyExtractor, valueExtractor);
-        logLoader();
+        publish(stage(collection, keyExtractor, valueExtractor));
     }
 
     /**
@@ -118,7 +169,7 @@ public abstract class UniqueCache<K, V> extends AbstractMapCache<K, V> {
      * <p>This method is intended for operational troubleshooting and cache
      * verification during startup or cache refresh operations.
      */
-    private void logLoader() {
+    private void logLoad() {
         if (logger().isTraceEnabled()) {
             logger().trace("[{}] Loaded {} cache entries", cacheName(), storedCache.size());
         }

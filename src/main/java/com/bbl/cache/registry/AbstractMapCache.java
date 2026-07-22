@@ -7,10 +7,18 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
-public abstract class AbstractMapCache<K, S> implements KeyedCache<K, S> {
+public sealed abstract class AbstractMapCache<K, S> implements KeyedCache<K, S>
+        permits UniqueCache, GroupedCache, DoubleKeyCache {
 
+    private final String name;
+    private final Logger logger;
 
     protected volatile Map<K, S> storedCache = Map.of();
+
+    protected AbstractMapCache(String name, Logger logger) {
+        this.name = Objects.requireNonNull(name, "name must not be null");
+        this.logger = Objects.requireNonNull(logger, "logger must not be null");
+    }
 
     @Override
     public S get(K key) {
@@ -69,11 +77,30 @@ public abstract class AbstractMapCache<K, S> implements KeyedCache<K, S> {
     }
 
 
-    protected abstract Logger logger();
+    protected final Logger logger() {
+        return logger;
+    }
 
 
-    protected String cacheName() {
-        return getClass().getSimpleName();
+    protected final String cacheName() {
+        return name;
+    }
+
+    /**
+     * Atomic single-volatile-write swap of the whole snapshot. Cannot throw.
+     *
+     * <p>Deliberately not {@code final}: each sealed subclass overrides this
+     * with a public, same-erasure {@code publish(...)} that calls
+     * {@code super.publish(...)} then adds its trace logging. Because the
+     * subclass's type parameter {@code S} is bound to a concrete type
+     * ({@code V}, {@code List<V>}, or {@code Map<K2,V>}), the substituted
+     * signature is identical to this method's, so a {@code final} modifier
+     * here would make that override illegal. The {@code sealed permits}
+     * clause on this class already closes the hierarchy to exactly the three
+     * intended shapes, so {@code final} would add no real safety.
+     */
+    protected void publish(Map<K, S> snapshot) {
+        this.storedCache = snapshot;
     }
 
     /**

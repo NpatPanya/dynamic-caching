@@ -4,7 +4,8 @@ import java.util.Map;
 
 /**
  * A generic key/value read view over an immutable snapshot.
- * Populated via subclasses of BasicCache and GroupedCache.
+ * Populated via the shape components {@code UniqueCache}, {@code GroupedCache},
+ * and {@code DoubleKeyCache}.
  * Distinct from the String-keyed public {@code com.bbl.cache.Cache}.
  */
 public interface KeyedCache<K, V> {

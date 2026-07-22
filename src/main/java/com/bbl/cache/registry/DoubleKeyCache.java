@@ -1,6 +1,7 @@
 package com.bbl.cache.registry;
 
-import com.bbl.gw.config.cache.support.CacheFactory;
+import com.bbl.cache.support.CacheFactory;
+import org.apache.logging.log4j.Logger;
 
 import java.util.Collection;
 import java.util.Map;
@@ -39,11 +40,16 @@ import java.util.function.Function;
  * @param <K2> secondary unique key within a group
  * @param <V> cached value type
  */
-public abstract class DoubleKeyCache<K1, K2, V>
+public final class DoubleKeyCache<K1, K2, V>
         extends AbstractMapCache<K1, Map<K2, V>> {
 
+    public DoubleKeyCache(String name, Logger logger) {
+        super(name, logger);
+    }
+
     /**
-     * Loads and replaces the entire cache content using a two-level key structure.
+     * Builds (but does not publish) a new cache snapshot using a two-level
+     * key structure.
      *
      * <p>The supplied collection is transformed into:
      *
@@ -63,14 +69,12 @@ public abstract class DoubleKeyCache<K1, K2, V>
      * If multiple elements resolve to the same key pair, cache construction
      * fails with an {@link IllegalStateException}.
      *
-     * <p>Existing cache content is atomically replaced after the new cache
-     * structure has been successfully built.
-     *
      * @param collection source data used to populate the cache
      * @param key1Extractor extractor for the outer grouping key
      * @param key2Extractor extractor for the inner unique key
+     * @return the built, unpublished snapshot
      */
-    protected void load(
+    public Map<K1, Map<K2, V>> stage(
             Collection<V> collection,
             Function<V, K1> key1Extractor,
             Function<V, K2> key2Extractor) {
@@ -78,20 +82,12 @@ public abstract class DoubleKeyCache<K1, K2, V>
         validate(collection, key1Extractor);
         Objects.requireNonNull(key2Extractor, "key2Extractor must not be null");
 
-        this.storedCache = CacheFactory.doubleKeysCache(collection, key1Extractor, key2Extractor);
-
-        if (logger().isTraceEnabled()) {
-            int totalItem = storedCache.values().stream().mapToInt(Map::size).sum();
-
-            logger().trace("[{}] Loaded {} outer keys and {} cache entries", cacheName(), storedCache.size(), totalItem);
-
-        }
+        return CacheFactory.doubleKeysCache(collection, key1Extractor, key2Extractor);
     }
 
-
     /**
-     * Loads and replaces the entire cache content using a two-level key
-     * structure and a custom value extractor.
+     * Builds (but does not publish) a new cache snapshot using a two-level
+     * key structure and a custom value extractor.
      *
      * <p>The supplied collection is transformed into:
      *
@@ -111,40 +107,18 @@ public abstract class DoubleKeyCache<K1, K2, V>
      * the cached value type or when only a subset of the source object is
      * required at runtime.
      *
-     * <p>Example:
-     *
-     * <pre>
-     * serviceName
-     *     -> providerResponseCode
-     *         -> systemResponseCode
-     * </pre>
-     *
-     * instead of:
-     *
-     * <pre>
-     * serviceName
-     *     -> providerResponseCode
-     *         -> ResponseMapping
-     * </pre>
-     *
-     * <p>This can reduce memory consumption by storing only the required
-     * value rather than the entire source object.
-     *
      * <p>Duplicate combinations of {@code K1} and {@code K2} are not
      * allowed. If multiple elements resolve to the same key pair,
      * cache construction fails with an {@link IllegalStateException}.
-     *
-     * <p>Existing cache content is atomically replaced after the new cache
-     * structure has been successfully built.
      *
      * @param collection source data used to populate the cache
      * @param key1Extractor extractor for the outer grouping key
      * @param key2Extractor extractor for the inner unique key
      * @param valueExtractor extractor for the cached value
      * @param <T> source element type
+     * @return the built, unpublished snapshot
      */
-
-    protected <T> void load(
+    public <T> Map<K1, Map<K2, V>> stage(
             Collection<T> collection,
             Function<T, K1> key1Extractor,
             Function<T, K2> key2Extractor,
@@ -160,24 +134,66 @@ public abstract class DoubleKeyCache<K1, K2, V>
                 valueExtractor,
                 "valueExtractor must not be null");
 
-        this.storedCache = CacheFactory.doubleKeysCache(
+        return CacheFactory.doubleKeysCache(
                 collection,
                 key1Extractor,
                 key2Extractor,
                 valueExtractor);
+    }
 
-        if (logger().isTraceEnabled()) {
-            int totalItem = storedCache.values()
-                    .stream()
-                    .mapToInt(Map::size)
-                    .sum();
+    /**
+     * Publishes a previously staged snapshot, atomically replacing the
+     * current cache content, and emits the load trace line.
+     *
+     * @param snapshot the snapshot built by {@link #stage}
+     */
+    public void publish(Map<K1, Map<K2, V>> snapshot) {
+        super.publish(snapshot);
+        logLoad();
+    }
 
-            logger().trace(
-                    "[{}] Loaded {} outer keys and {} cache entries",
-                    cacheName(),
-                    storedCache.size(),
-                    totalItem);
-        }
+    /**
+     * Loads and replaces the entire cache content using a two-level key structure.
+     *
+     * <p>Convenience method equivalent to
+     * {@code publish(stage(collection, key1Extractor, key2Extractor))}.
+     *
+     * <p>Existing cache content is atomically replaced after the new cache
+     * structure has been successfully built.
+     *
+     * @param collection source data used to populate the cache
+     * @param key1Extractor extractor for the outer grouping key
+     * @param key2Extractor extractor for the inner unique key
+     */
+    public void load(
+            Collection<V> collection,
+            Function<V, K1> key1Extractor,
+            Function<V, K2> key2Extractor) {
+        publish(stage(collection, key1Extractor, key2Extractor));
+    }
+
+    /**
+     * Loads and replaces the entire cache content using a two-level key
+     * structure and a custom value extractor.
+     *
+     * <p>Convenience method equivalent to
+     * {@code publish(stage(collection, key1Extractor, key2Extractor, valueExtractor))}.
+     *
+     * <p>Existing cache content is atomically replaced after the new cache
+     * structure has been successfully built.
+     *
+     * @param collection source data used to populate the cache
+     * @param key1Extractor extractor for the outer grouping key
+     * @param key2Extractor extractor for the inner unique key
+     * @param valueExtractor extractor for the cached value
+     * @param <T> source element type
+     */
+    public <T> void load(
+            Collection<T> collection,
+            Function<T, K1> key1Extractor,
+            Function<T, K2> key2Extractor,
+            Function<T, V> valueExtractor) {
+        publish(stage(collection, key1Extractor, key2Extractor, valueExtractor));
     }
 
 
@@ -211,5 +227,13 @@ public abstract class DoubleKeyCache<K1, K2, V>
     @Override
     public Map<K2, V> get(K1 key1) {
         return storedCache.getOrDefault(key1, Map.of());
+    }
+
+    private void logLoad() {
+        if (logger().isTraceEnabled()) {
+            int totalItem = storedCache.values().stream().mapToInt(Map::size).sum();
+
+            logger().trace("[{}] Loaded {} outer keys and {} cache entries", cacheName(), storedCache.size(), totalItem);
+        }
     }
 }

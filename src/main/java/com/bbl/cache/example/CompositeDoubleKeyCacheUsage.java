@@ -1,8 +1,11 @@
 package com.bbl.cache.example;
 
-import com.bbl.common.application.port.out.persistence.AnygwResponseMappingRepositoryPort;
-import com.bbl.common.infrastructure.adapter.out.persistence.entity.Anygwresponsemapping;
-import com.bbl.gw.config.cache.registry.DoubleKeyCache;
+// NOTE: non-compiling stub — references example entity/repo types not present in this module (see design doc §9.2)
+
+import com.bbl.cache.example.entity.ResponseEntity;
+import com.bbl.cache.example.entity.ResponseRepository;
+import com.bbl.cache.registry.CacheFacade;
+import com.bbl.cache.registry.DoubleKeyCache;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.apache.logging.log4j.LogManager;
@@ -25,19 +28,21 @@ import java.util.List;
  * client-facing response codes and messages.
  */
 @ApplicationScoped
-public class CompositeDoubleKeyCacheUsage extends DoubleKeyCache<
-        CompositeDoubleKeyCacheUsage.ServiceClientKey,
-        CompositeDoubleKeyCacheUsage.ProviderResponseKey,
-        Entitiy3> {
+public class CompositeDoubleKeyCacheUsage {
 
     private static final Logger log = LogManager.getLogger();
-    private Entitiy3RepositoryPort port;
+
+    private final CacheFacade caches = new CacheFacade("CompositeDoubleKeyCacheUsage", log);
+    private final DoubleKeyCache<ServiceClientKey, ProviderResponseKey, ResponseEntity> byKeys =
+            caches.doubleKeyCache("byKeys");
+
+    private ResponseRepository port;
 
     public CompositeDoubleKeyCacheUsage() {
     }
 
     @Inject
-    public CompositeDoubleKeyCacheUsage(Entitiy3RepositoryPort port) {
+    public CompositeDoubleKeyCacheUsage(ResponseRepository port) {
         this.port = port;
     }
 
@@ -62,19 +67,18 @@ public class CompositeDoubleKeyCacheUsage extends DoubleKeyCache<
      */
     public void init(List<String> serviceNameList) {
         var result = port.findByServiceNameList(serviceNameList);
-        load(result,
+        byKeys.load(result,
                 f -> new ServiceClientKey(
                         f.getId().getServiceName(),
                         f.getId().getClientId()),
                 s -> new ProviderResponseKey(
                         s.getId().getProviderId(),
-                        s.getId().getProviderRspcode()));
+                        s.getId().getProviderRspCode()));
 
     }
 
-    @Override
-    protected Logger logger() {
-        return log;
+    public ResponseEntity get(ServiceClientKey k1, ProviderResponseKey k2) {
+        return byKeys.get(k1, k2);
     }
 
 

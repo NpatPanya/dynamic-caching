@@ -37,6 +37,22 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <!--
+                        com/bbl/cache/example/** are illustrative usage examples that reference
+                        entity/repository types from a different project and were never intended
+                        to compile standalone in this module (see docs/cache-registry-design.md §9.2).
+                        Excluded so the real registry/support code and its tests can build and run.
+                    -->
+                    <excludes>
+                        <exclude>com/bbl/cache/example/**</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
             </plugin>
