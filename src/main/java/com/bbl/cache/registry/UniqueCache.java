@@ -40,8 +40,8 @@ import java.util.function.Function;
  */
 public final class UniqueCache<K, V> extends AbstractMapCache<K, V> {
 
-    public UniqueCache(String name, Logger logger) {
-        super(name, logger);
+    public UniqueCache(String cacheName, Logger logger) {
+        super(cacheName, logger);
     }
 
     /**

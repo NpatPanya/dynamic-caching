@@ -210,9 +210,9 @@ class CacheFacadeTest {
      */
     @Test
     @DisplayName("names() returns unmodifiable set - add() throws UnsupportedOperationException")
-    void testNamesUnmodifiableAdd() {
+    void testCachesNameUnmodifiableAdd() {
         cacheFacade.uniqueCache("cache1");
-        Set<String> names = cacheFacade.names();
+        Set<String> names = cacheFacade.cachesName();
 
         assertThrows(UnsupportedOperationException.class, () -> {
             names.add("newName");
@@ -224,9 +224,9 @@ class CacheFacadeTest {
      */
     @Test
     @DisplayName("names() returns unmodifiable set - clear() throws UnsupportedOperationException")
-    void testNamesUnmodifiableClear() {
+    void testCachesNameUnmodifiableClear() {
         cacheFacade.uniqueCache("cache1");
-        Set<String> names = cacheFacade.names();
+        Set<String> names = cacheFacade.cachesName();
 
         assertThrows(UnsupportedOperationException.class, () -> {
             names.clear();
@@ -238,9 +238,9 @@ class CacheFacadeTest {
      */
     @Test
     @DisplayName("names() returns unmodifiable set - remove() throws UnsupportedOperationException")
-    void testNamesUnmodifiableRemove() {
+    void testCachesNameUnmodifiableRemove() {
         cacheFacade.uniqueCache("cache1");
-        Set<String> names = cacheFacade.names();
+        Set<String> names = cacheFacade.cachesName();
 
         assertThrows(UnsupportedOperationException.class, () -> {
             names.remove("cache1");
@@ -252,12 +252,12 @@ class CacheFacadeTest {
      */
     @Test
     @DisplayName("names() contains all registered component names")
-    void testNamesContent() {
+    void testCachesNameContent() {
         cacheFacade.uniqueCache("cache1");
         cacheFacade.groupedCache("cache2");
         cacheFacade.doubleKeyCache("cache3");
 
-        Set<String> names = cacheFacade.names();
+        Set<String> names = cacheFacade.cachesName();
 
         assertEquals(3, names.size(), "Should have 3 registered names");
         assertTrue(names.contains("cache1"), "names should contain 'cache1'");
@@ -337,7 +337,7 @@ class CacheFacadeTest {
         cache3.load(Arrays.asList("item1"), item -> "k", item -> item);
 
         // Verify
-        assertEquals(3, cacheFacade.names().size());
+        assertEquals(3, cacheFacade.cachesName().size());
         assertEquals(5, cacheFacade.totalSize());  // 2 (c1: a,b) + 2 (c2: x,y) + 1 (c3: k) = 5 distinct keys per shape
 
         // Clear all

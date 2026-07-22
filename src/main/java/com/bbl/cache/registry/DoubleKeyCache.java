@@ -43,8 +43,8 @@ import java.util.function.Function;
 public final class DoubleKeyCache<K1, K2, V>
         extends AbstractMapCache<K1, Map<K2, V>> {
 
-    public DoubleKeyCache(String name, Logger logger) {
-        super(name, logger);
+    public DoubleKeyCache(String cacheName, Logger logger) {
+        super(cacheName, logger);
     }
 
     /**

@@ -46,8 +46,8 @@ import java.util.function.Function;
 public final class GroupedCache<K, V>
         extends AbstractMapCache<K, List<V>> {
 
-    public GroupedCache(String name, Logger logger) {
-        super(name, logger);
+    public GroupedCache(String cacheName, Logger logger) {
+        super(cacheName, logger);
     }
 
     /**

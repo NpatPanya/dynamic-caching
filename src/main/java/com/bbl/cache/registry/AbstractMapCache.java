@@ -10,13 +10,13 @@ import java.util.function.Function;
 public sealed abstract class AbstractMapCache<K, S> implements KeyedCache<K, S>
         permits UniqueCache, GroupedCache, DoubleKeyCache {
 
-    private final String name;
+    private final String cacheName;
     private final Logger logger;
 
     protected volatile Map<K, S> storedCache = Map.of();
 
-    protected AbstractMapCache(String name, Logger logger) {
-        this.name = Objects.requireNonNull(name, "name must not be null");
+    protected AbstractMapCache(String cacheName, Logger logger) {
+        this.cacheName = Objects.requireNonNull(cacheName, "cacheName must not be null");
         this.logger = Objects.requireNonNull(logger, "logger must not be null");
     }
 
@@ -83,7 +83,7 @@ public sealed abstract class AbstractMapCache<K, S> implements KeyedCache<K, S>
 
 
     protected final String cacheName() {
-        return name;
+        return cacheName;
     }
 
     /**

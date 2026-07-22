@@ -26,80 +26,80 @@ import java.util.Set;
  */
 public final class CacheFacade {
 
-    private final String groupName;
+    private final String cacheName;
     private final Logger logger;
     private final Map<String, KeyedCache<?, ?>> components = new LinkedHashMap<>();
 
     /**
      * Constructs a new cache group with the given name and logger.
      *
-     * @param groupName the name of this cache group (must not be null)
+     * @param cacheName the name of this cache group (must not be null)
      * @param logger the logger for operational traces (must not be null)
      * @throws NullPointerException if groupName or logger is null
      */
-    public CacheFacade(String groupName, Logger logger) {
-        this.groupName = Objects.requireNonNull(groupName, "groupName");
+    public CacheFacade(String cacheName, Logger logger) {
+        this.cacheName = Objects.requireNonNull(cacheName, "cacheName");
         this.logger = Objects.requireNonNull(logger, "logger");
     }
 
     /**
      * Creates and registers a new {@link UniqueCache} component.
      *
-     * @param name the component name (must be unique within this group)
+     * @param cacheName the component cacheName (must be unique within this group)
      * @param <K> cache key type
      * @param <V> cache value type
      * @return the newly registered UniqueCache
-     * @throws IllegalStateException if a component with this name is already registered
-     * @throws NullPointerException if name is null
+     * @throws IllegalStateException if a component with this cacheName is already registered
+     * @throws NullPointerException if cacheName is null
      */
-    public <K, V> UniqueCache<K, V> uniqueCache(String name) {
-        return reg(name, new UniqueCache<>(name, logger));
+    public <K, V> UniqueCache<K, V> uniqueCache(String cacheName) {
+        return reg(cacheName, new UniqueCache<>(cacheName, logger));
     }
 
     /**
      * Creates and registers a new {@link GroupedCache} component.
      *
-     * @param name the component name (must be unique within this group)
+     * @param cacheName the component cacheName (must be unique within this group)
      * @param <K> grouping key type
      * @param <V> cache value type
      * @return the newly registered GroupedCache
-     * @throws IllegalStateException if a component with this name is already registered
-     * @throws NullPointerException if name is null
+     * @throws IllegalStateException if a component with this cacheName is already registered
+     * @throws NullPointerException if cacheName is null
      */
-    public <K, V> GroupedCache<K, V> groupedCache(String name) {
-        return reg(name, new GroupedCache<>(name, logger));
+    public <K, V> GroupedCache<K, V> groupedCache(String cacheName) {
+        return reg(cacheName, new GroupedCache<>(cacheName, logger));
     }
 
     /**
      * Creates and registers a new {@link DoubleKeyCache} component.
      *
-     * @param name the component name (must be unique within this group)
+     * @param cacheName the component cacheName (must be unique within this group)
      * @param <K1> primary key type
      * @param <K2> secondary key type
      * @param <V> cache value type
      * @return the newly registered DoubleKeyCache
-     * @throws IllegalStateException if a component with this name is already registered
-     * @throws NullPointerException if name is null
+     * @throws IllegalStateException if a component with this cacheName is already registered
+     * @throws NullPointerException if cacheName is null
      */
-    public <K1, K2, V> DoubleKeyCache<K1, K2, V> doubleKeyCache(String name) {
-        return reg(name, new DoubleKeyCache<>(name, logger));
+    public <K1, K2, V> DoubleKeyCache<K1, K2, V> doubleKeyCache(String cacheName) {
+        return reg(cacheName, new DoubleKeyCache<>(cacheName, logger));
     }
 
     /**
-     * Registers a cache component under the given name.
+     * Registers a cache component under the given cacheName.
      *
      * <p>This is an internal helper used by the factory methods.
      * It enforces uniqueness of component names.
      *
-     * @param name the component name
+     * @param cacheName the component cacheName
      * @param c the cache component to register
      * @param <C> cache type
      * @return the registered component
-     * @throws IllegalStateException if a component with this name is already registered
+     * @throws IllegalStateException if a component with this cacheName is already registered
      */
-    private <C extends KeyedCache<?, ?>> C reg(String name, C c) {
-        if (components.putIfAbsent(name, c) != null) {
-            throw new IllegalStateException("duplicate cache component name: " + name);
+    private <C extends KeyedCache<?, ?>> C reg(String cacheName, C c) {
+        if (components.putIfAbsent(cacheName, c) != null) {
+            throw new IllegalStateException("duplicate cache component cacheName: " + cacheName);
         }
         return c;
     }
@@ -113,7 +113,7 @@ public final class CacheFacade {
     public void clearAll() {
         components.values().forEach(KeyedCache::clear);
         if (logger.isTraceEnabled()) {
-            logger.trace("[{}] cleared {} components", groupName, components.size());
+            logger.trace("[{}] cleared {} components", cacheName, components.size());
         }
     }
 
@@ -146,22 +146,22 @@ public final class CacheFacade {
      *
      * @return an unmodifiable set of component names
      */
-    public Set<String> names() {
+    public Set<String> cachesName() {
         return Collections.unmodifiableSet(components.keySet());
     }
 
     /**
-     * Retrieves a registered cache component by name.
+     * Retrieves a registered cache component by cacheName.
      *
      * <p>This provides a read-only central view of registered components
      * and is primarily intended for cross-cutting operations like
      * {@link #clearAll()}, not for typed reads (which go through
      * the bean's typed field).
      *
-     * @param name the component name
+     * @param cacheName the component cacheName
      * @return the component, or null if not registered
      */
-    public KeyedCache<?, ?> get(String name) {
-        return components.get(name);
+    public KeyedCache<?, ?> get(String cacheName) {
+        return components.get(cacheName);
     }
 }
