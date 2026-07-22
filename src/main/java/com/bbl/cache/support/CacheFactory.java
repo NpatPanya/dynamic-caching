@@ -1,4 +1,4 @@
-package com.bbl.cache.factory;
+package com.bbl.cache.support;
 
 import java.util.Collection;
 import java.util.Collections;

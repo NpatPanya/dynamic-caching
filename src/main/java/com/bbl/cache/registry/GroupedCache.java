@@ -1,5 +1,6 @@
-package com.bbl.cache.factory;
+package com.bbl.cache.registry;
 
+import com.bbl.gw.config.cache.support.CacheFactory;
 
 import java.util.Collection;
 import java.util.List;

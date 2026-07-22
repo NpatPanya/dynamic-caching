@@ -1,4 +1,4 @@
-package com.bbl.cache.factory;
+package com.bbl.cache.registry;
 
 import org.apache.logging.log4j.Logger;
 

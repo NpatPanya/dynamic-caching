@@ -1,4 +1,4 @@
-package com.bbl.cache.factory;
+package com.bbl.cache.registry;
 
 import java.util.Map;
 

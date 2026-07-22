@@ -1,4 +1,4 @@
-package com.bbl.cache.factory;
+package com.bbl.cache.support;
 
 public class CacheUtils {
 
