@@ -112,22 +112,6 @@ class StringKeyCacheRegistryTest {
         assertEquals("reused", registry.get("first"));
     }
 
-    @SuppressWarnings("deprecation")
-    @Test
-    void primaryReregisterCanReplaceDeprecatedRegistrations() {
-        registry.register("legacy-cache", Caches.fromMap(Map.of("key", "value")));
-        RegistryKey<String> typedKey = RegistryKey.value("legacy-key", String.class);
-        registry.register(typedKey, "old");
-
-        String cacheReplacement = registry.reregister("legacy-cache", "new-cache-value");
-        Integer keyReplacement = registry.reregister("legacy-key", 42);
-
-        assertEquals("new-cache-value", cacheReplacement);
-        assertEquals("new-cache-value", registry.get("legacy-cache"));
-        assertEquals(42, keyReplacement);
-        assertEquals(42, registry.<Integer>get("legacy-key"));
-    }
-
     @Test
     void generalCollectionsAreSnapshottedAndExposedAsUnmodifiableCollections() {
         ArrayDeque<String> source = new ArrayDeque<>(List.of("first"));
@@ -199,19 +183,6 @@ class StringKeyCacheRegistryTest {
             releaseReader.countDown();
             executor.shutdownNow();
         }
-    }
-
-    @SuppressWarnings("deprecation")
-    @Test
-    void deprecatedCacheReregisterCannotReplaceAPrimaryStringRegistration() {
-        registry.register("shared", "primary");
-
-        assertThrows(
-                IllegalStateException.class,
-                () -> registry.reregister(
-                        "shared",
-                        Caches.fromMap(Map.of("legacy", "value"))));
-        assertEquals("primary", registry.get("shared"));
     }
 
     @Test

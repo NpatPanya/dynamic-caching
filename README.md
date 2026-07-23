@@ -95,10 +95,6 @@ registry.reregister(
 
 Registration and replacement are atomic. Concurrent readers see either the old immutable snapshot or the new one. References obtained before replacement remain valid.
 
-## Deprecated APIs
-
-`RegistryKey<T>`, `Cache`, `Caches`, `CacheDescriptor`, and `TtlCache` remain functional migration APIs but are deprecated. Legacy cache-wrapper lookup is available as `getCache(String)` so that the primary `get(String)` can return raw registered data directly.
-
 Runnable examples are in `src/main/java/com/bbl/cache/examples/`.
 
 ## Testing

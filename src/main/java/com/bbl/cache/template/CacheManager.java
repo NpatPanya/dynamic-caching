@@ -83,7 +83,6 @@
 // *     <li>Temporary or task-oriented data -> Use ViewFactory.</li>
 // * </ul>
 // */
-//@Deprecated
 //@ApplicationScoped
 //public class CacheManager extends AygwDomainCacheTemplate {
 //
