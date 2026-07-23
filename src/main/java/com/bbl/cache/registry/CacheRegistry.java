@@ -4,102 +4,189 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
 
 /**
- * Application-wide registry of named caches.
+ * Application-wide registry for typed immutable data snapshots.
  *
- * <p>Two retrieval paths are supported:
- *
- * <ul>
- *     <li><b>Type-safe (recommended for new code):</b> {@link #register(CacheDescriptor, Cache)}
- *     / {@link #get(CacheDescriptor)}. The descriptor carries a best-effort
- *     runtime witness for the key/value types, so a mismatched retrieval
- *     fails clearly with an {@link IllegalStateException} naming the
- *     expected vs. actual types, rather than a silent
- *     {@link ClassCastException} at an unrelated call site.</li>
- *     <li><b>Back-compat / simple (unchecked, documented unsafe):</b>
- *     {@link #register(String, Cache)} / {@link #get(String)}. The type
- *     parameters supplied to {@link #get(String)} cannot be verified at
- *     runtime; callers must use the same key/value types used at
- *     registration.</li>
- * </ul>
- *
- * <p>{@code register(...)} is fail-fast on a duplicate key (preserves
- * exactly-one-winner race semantics). {@link #reregister} is a documented
- * upsert that atomically replaces the stored entry -- it creates the entry
- * when absent and swaps it wholesale when present, building a fresh
- * {@link TtlCache} with a fresh {@code registeredAt} when a TTL is supplied.
- * In-flight readers holding a previously-returned {@link Cache} reference
- * keep reading the old immutable snapshot safely.
+ * <p>New code registers arbitrary values with a shared {@link RegistryKey}.
+ * The legacy {@link Cache}/{@link CacheDescriptor} overloads remain available
+ * as deprecated migration adapters.
  */
+@SuppressWarnings("deprecation")
 public final class CacheRegistry {
 
-    private final ConcurrentHashMap<String, CacheEntry<?, ?>> registry =
-            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, RegistryEntry> registry = new ConcurrentHashMap<>();
+    private final LongSupplier ticker;
 
     private CacheRegistry() {
+        this(System::nanoTime);
+    }
+
+    CacheRegistry(LongSupplier ticker) {
+        this.ticker = Objects.requireNonNull(ticker, "ticker must not be null");
     }
 
     public static CacheRegistry getInstance() {
         return Holder.INSTANCE;
     }
 
-    // ---- Back-compat / simple path ----
+    // ---- Typed raw-data path ----
 
-    public <K, V> Cache<K, V> register(String name, Cache<K, V> delegate) {
-        return registerInternal(name, delegate, Optional.empty(), null);
+    public <T> T register(RegistryKey<T> key, T data) {
+        return registerValue(key, data, Optional.empty(), false);
     }
 
-    public <K, V> Cache<K, V> register(String name, Cache<K, V> delegate, Duration ttl) {
-        Objects.requireNonNull(ttl, "ttl must not be null");
-        return registerInternal(name, delegate, Optional.of(ttl), null);
+    public <T> T register(RegistryKey<T> key, T data, Duration ttl) {
+        return registerValue(key, data, validatedTtl(ttl), false);
     }
 
-    /**
-     * Retrieves a cache by name. The unchecked cast is safe only when callers
-     * use the same key/value types supplied during registration.
-     */
-    @SuppressWarnings("unchecked")
-    public <K, V> Optional<Cache<K, V>> get(String name) {
-        validateName(name);
-        CacheEntry<?, ?> entry = registry.get(name);
-        return entry == null
-                ? Optional.empty()
-                : Optional.of((Cache<K, V>) entry.cache());
+    public <T> T reregister(RegistryKey<T> key, T data) {
+        return registerValue(key, data, Optional.empty(), true);
     }
 
-    // ---- Type-safe path ----
-
-    public <K, V> Cache<K, V> register(CacheDescriptor<K, V> descriptor, Cache<K, V> cache) {
-        Objects.requireNonNull(descriptor, "descriptor must not be null");
-        return registerInternal(descriptor.name(), cache, Optional.empty(), descriptor);
+    public <T> T reregister(RegistryKey<T> key, T data, Duration ttl) {
+        return registerValue(key, data, validatedTtl(ttl), true);
     }
 
-    public <K, V> Cache<K, V> register(
-            CacheDescriptor<K, V> descriptor, Cache<K, V> cache, Duration ttl) {
-        Objects.requireNonNull(descriptor, "descriptor must not be null");
-        Objects.requireNonNull(ttl, "ttl must not be null");
-        return registerInternal(descriptor.name(), cache, Optional.of(ttl), descriptor);
-    }
-
-    /**
-     * Retrieves a cache by descriptor. The stored witness is compared to the
-     * requested descriptor by exact {@code equals} over
-     * {@code (name, keyType, valueType)} -- never assignability.
-     *
-     * @throws IllegalStateException if the entry was registered without a
-     *      type descriptor (via {@link #register(String, Cache)}), or if it
-     *      was registered under a different {@code (keyType, valueType)}
-     *      witness for the same name.
-     */
-    @SuppressWarnings("unchecked")
-    public <K, V> Optional<Cache<K, V>> get(CacheDescriptor<K, V> descriptor) {
-        Objects.requireNonNull(descriptor, "descriptor must not be null");
-        CacheEntry<?, ?> entry = registry.get(descriptor.name());
+    public <T> Optional<T> get(RegistryKey<T> key) {
+        Objects.requireNonNull(key, "key must not be null");
+        RegistryEntry entry = registry.get(key.name());
         if (entry == null) {
             return Optional.empty();
         }
-        CacheDescriptor<?, ?> storedWitness = entry.descriptor();
+        if (!(entry instanceof ValueEntry<?> valueEntry)) {
+            throw new IllegalStateException(
+                    "Name '" + key.name() + "' is registered through the deprecated Cache API");
+        }
+        requireSameKey(key, valueEntry.key());
+        if (valueEntry.isExpired(ticker.getAsLong())) {
+            registry.remove(key.name(), valueEntry);
+            return Optional.empty();
+        }
+        return Optional.of(expose(key, valueEntry));
+    }
+
+    public boolean unregister(RegistryKey<?> key) {
+        Objects.requireNonNull(key, "key must not be null");
+        AtomicReference<Boolean> removed = new AtomicReference<>(false);
+        registry.compute(key.name(), (name, existing) -> {
+            if (existing == null) {
+                return null;
+            }
+            if (!(existing instanceof ValueEntry<?> valueEntry)) {
+                throw new IllegalStateException(
+                        "Name '" + name + "' is registered through the deprecated Cache API");
+            }
+            requireSameKey(key, valueEntry.key());
+            removed.set(true);
+            return null;
+        });
+        return removed.get();
+    }
+
+    private <T> T registerValue(
+            RegistryKey<T> key, T data, Optional<Duration> ttl, boolean replace) {
+        Objects.requireNonNull(key, "key must not be null");
+        Objects.requireNonNull(data, "data must not be null");
+        T snapshot = key.snapshot(data);
+        ValueEntry<T> candidate =
+                new ValueEntry<>(key, snapshot, ticker.getAsLong(), ttl.map(Duration::toNanos),
+                        key.requiresDefensiveCopy(snapshot));
+
+        if (!replace) {
+            if (registry.putIfAbsent(key.name(), candidate) != null) {
+                throw new IllegalStateException("Registry name already registered: " + key.name());
+            }
+        } else {
+            registry.compute(key.name(), (name, existing) -> {
+                if (existing != null) {
+                    if (!(existing instanceof ValueEntry<?> valueEntry)) {
+                        throw new IllegalStateException(
+                                "Name '" + name + "' is registered through the deprecated Cache API");
+                    }
+                    requireSameKey(key, valueEntry.key());
+                }
+                return candidate;
+            });
+        }
+        return key.expose(snapshot, candidate.defensiveCopyOnRead());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T expose(RegistryKey<T> key, ValueEntry<?> entry) {
+        return key.expose((T) entry.data(), entry.defensiveCopyOnRead());
+    }
+
+    private static void requireSameKey(RegistryKey<?> requested, RegistryKey<?> stored) {
+        if (requested != stored) {
+            throw new IllegalStateException(
+                    "Registry name '" + requested.name()
+                            + "' belongs to a different RegistryKey instance");
+        }
+    }
+
+    // ---- Deprecated Cache-based migration path ----
+
+    /** @deprecated Register raw data with {@link #register(RegistryKey, Object)}. */
+    @Deprecated
+    public <K, V> Cache<K, V> register(String name, Cache<K, V> delegate) {
+        return registerLegacy(name, delegate, Optional.empty(), null, false);
+    }
+
+    /** @deprecated Register raw data with {@link #register(RegistryKey, Object, Duration)}. */
+    @Deprecated
+    public <K, V> Cache<K, V> register(String name, Cache<K, V> delegate, Duration ttl) {
+        return registerLegacy(name, delegate, validatedTtl(ttl), null, false);
+    }
+
+    /** @deprecated Retrieve raw data with {@link #get(RegistryKey)}. */
+    @Deprecated
+    @SuppressWarnings("unchecked")
+    public <K, V> Optional<Cache<K, V>> get(String name) {
+        validateName(name);
+        RegistryEntry entry = registry.get(name);
+        if (entry == null) {
+            return Optional.empty();
+        }
+        if (!(entry instanceof LegacyEntry legacyEntry)) {
+            throw new IllegalStateException(
+                    "Name '" + name + "' is registered through the typed raw-data API");
+        }
+        return Optional.of((Cache<K, V>) legacyEntry.cache());
+    }
+
+    /** @deprecated Register raw data with {@link #register(RegistryKey, Object)}. */
+    @Deprecated
+    public <K, V> Cache<K, V> register(
+            CacheDescriptor<K, V> descriptor, Cache<K, V> cache) {
+        Objects.requireNonNull(descriptor, "descriptor must not be null");
+        return registerLegacy(descriptor.name(), cache, Optional.empty(), descriptor, false);
+    }
+
+    /** @deprecated Register raw data with {@link #register(RegistryKey, Object, Duration)}. */
+    @Deprecated
+    public <K, V> Cache<K, V> register(
+            CacheDescriptor<K, V> descriptor, Cache<K, V> cache, Duration ttl) {
+        Objects.requireNonNull(descriptor, "descriptor must not be null");
+        return registerLegacy(descriptor.name(), cache, validatedTtl(ttl), descriptor, false);
+    }
+
+    /** @deprecated Retrieve raw data with {@link #get(RegistryKey)}. */
+    @Deprecated
+    @SuppressWarnings("unchecked")
+    public <K, V> Optional<Cache<K, V>> get(CacheDescriptor<K, V> descriptor) {
+        Objects.requireNonNull(descriptor, "descriptor must not be null");
+        RegistryEntry entry = registry.get(descriptor.name());
+        if (entry == null) {
+            return Optional.empty();
+        }
+        if (!(entry instanceof LegacyEntry legacyEntry)) {
+            throw new IllegalStateException(
+                    "Name '" + descriptor.name() + "' is registered through the typed raw-data API");
+        }
+        CacheDescriptor<?, ?> storedWitness = legacyEntry.descriptor();
         if (storedWitness == null) {
             throw new IllegalStateException(
                     "Cache '" + descriptor.name()
@@ -108,72 +195,95 @@ public final class CacheRegistry {
         if (!storedWitness.equals(descriptor)) {
             throw new IllegalStateException(
                     "Cache '" + descriptor.name() + "' registered as <"
-                            + storedWitness.keyType().getName() + ", " + storedWitness.valueType().getName()
-                            + ">, requested as <"
-                            + descriptor.keyType().getName() + ", " + descriptor.valueType().getName() + ">");
+                            + storedWitness.keyType().getName() + ", "
+                            + storedWitness.valueType().getName() + ">, requested as <"
+                            + descriptor.keyType().getName() + ", "
+                            + descriptor.valueType().getName() + ">");
         }
-        return Optional.of((Cache<K, V>) entry.cache());
+        return Optional.of((Cache<K, V>) legacyEntry.cache());
     }
 
-    // ---- Atomic-replace reload (upsert) ----
-
-    public <K, V> Cache<K, V> reregister(CacheDescriptor<K, V> descriptor, Cache<K, V> cache) {
+    /** @deprecated Replace raw data with {@link #reregister(RegistryKey, Object)}. */
+    @Deprecated
+    public <K, V> Cache<K, V> reregister(
+            CacheDescriptor<K, V> descriptor, Cache<K, V> cache) {
         Objects.requireNonNull(descriptor, "descriptor must not be null");
-        return reregisterInternal(descriptor.name(), cache, Optional.empty(), descriptor);
+        return registerLegacy(descriptor.name(), cache, Optional.empty(), descriptor, true);
     }
 
+    /** @deprecated Replace raw data with {@link #reregister(RegistryKey, Object, Duration)}. */
+    @Deprecated
     public <K, V> Cache<K, V> reregister(
             CacheDescriptor<K, V> descriptor, Cache<K, V> cache, Duration ttl) {
         Objects.requireNonNull(descriptor, "descriptor must not be null");
-        Objects.requireNonNull(ttl, "ttl must not be null");
-        return reregisterInternal(descriptor.name(), cache, Optional.of(ttl), descriptor);
+        return registerLegacy(descriptor.name(), cache, validatedTtl(ttl), descriptor, true);
     }
 
-    /** Full replace; drops any prior type witness -- the entry has no witness afterward. */
+    /** @deprecated Replace raw data with {@link #reregister(RegistryKey, Object)}. */
+    @Deprecated
     public <K, V> Cache<K, V> reregister(String name, Cache<K, V> cache) {
-        return reregisterInternal(name, cache, Optional.empty(), null);
+        return registerLegacy(name, cache, Optional.empty(), null, true);
     }
 
-    /** Full replace; drops any prior type witness -- the entry has no witness afterward. */
+    /** @deprecated Replace raw data with {@link #reregister(RegistryKey, Object, Duration)}. */
+    @Deprecated
     public <K, V> Cache<K, V> reregister(String name, Cache<K, V> cache, Duration ttl) {
-        Objects.requireNonNull(ttl, "ttl must not be null");
-        return reregisterInternal(name, cache, Optional.of(ttl), null);
+        return registerLegacy(name, cache, validatedTtl(ttl), null, true);
     }
 
+    /** @deprecated Prefer {@link #unregister(RegistryKey)} for typed registrations. */
+    @Deprecated
     public boolean unregister(String name) {
         validateName(name);
         return registry.remove(name) != null;
     }
 
-    /** Removes all registrations without invalidating already returned caches. */
+    /** Removes all registrations without invalidating already returned snapshots. */
     public void clear() {
         registry.clear();
     }
 
-    private <K, V> Cache<K, V> registerInternal(
-            String name, Cache<K, V> delegate, Optional<Duration> ttl, CacheDescriptor<K, V> descriptor) {
+    private <K, V> Cache<K, V> registerLegacy(
+            String name,
+            Cache<K, V> delegate,
+            Optional<Duration> ttl,
+            CacheDescriptor<K, V> descriptor,
+            boolean replace) {
         validateName(name);
         Objects.requireNonNull(delegate, "delegate must not be null");
-        Cache<K, V> exposed = decorate(delegate, ttl);
-        CacheEntry<K, V> candidate = new CacheEntry<>(exposed, ttl, descriptor);
-        if (registry.putIfAbsent(name, candidate) != null) {
-            throw new IllegalStateException("Cache name already registered: " + name);
+        Cache<K, V> exposed = ttl.<Cache<K, V>>map(duration ->
+                new TtlCache<>(delegate, duration)).orElse(delegate);
+        LegacyEntry candidate = new LegacyEntry(exposed, descriptor);
+        if (!replace) {
+            if (registry.putIfAbsent(name, candidate) != null) {
+                throw new IllegalStateException("Cache name already registered: " + name);
+            }
+        } else {
+            registry.compute(name, (ignored, existing) -> {
+                if (existing instanceof ValueEntry<?>) {
+                    throw new IllegalStateException(
+                            "Name '" + name + "' is registered through the typed raw-data API");
+                }
+                return candidate;
+            });
         }
         return exposed;
     }
 
-    private <K, V> Cache<K, V> reregisterInternal(
-            String name, Cache<K, V> delegate, Optional<Duration> ttl, CacheDescriptor<K, V> descriptor) {
-        validateName(name);
-        Objects.requireNonNull(delegate, "delegate must not be null");
-        Cache<K, V> exposed = decorate(delegate, ttl);
-        CacheEntry<K, V> replacement = new CacheEntry<>(exposed, ttl, descriptor);
-        registry.put(name, replacement);
-        return exposed;
-    }
-
-    private static <K, V> Cache<K, V> decorate(Cache<K, V> delegate, Optional<Duration> ttl) {
-        return ttl.<Cache<K, V>>map(duration -> new TtlCache<>(delegate, duration)).orElse(delegate);
+    private static Optional<Duration> validatedTtl(Duration ttl) {
+        Objects.requireNonNull(ttl, "ttl must not be null");
+        if (ttl.isZero() || ttl.isNegative()) {
+            throw new IllegalArgumentException("ttl must be positive");
+        }
+        try {
+            if (ttl.toNanos() == Long.MAX_VALUE) {
+                throw new IllegalArgumentException(
+                        "ttl must be less than Long.MAX_VALUE nanoseconds");
+            }
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("ttl is too large", ex);
+        }
+        return Optional.of(ttl);
     }
 
     private static void validateName(String name) {
@@ -182,11 +292,29 @@ public final class CacheRegistry {
         }
     }
 
-    private record CacheEntry<K, V>(Cache<K, V> cache, Optional<Duration> ttl, CacheDescriptor<K, V> descriptor) {
-        private CacheEntry {
+    private interface RegistryEntry {
+    }
+
+    private record ValueEntry<T>(
+            RegistryKey<T> key, T data, long registeredAt, Optional<Long> ttlNanos,
+            boolean defensiveCopyOnRead)
+            implements RegistryEntry {
+
+        private ValueEntry {
+            Objects.requireNonNull(key, "key must not be null");
+            Objects.requireNonNull(data, "data must not be null");
+            Objects.requireNonNull(ttlNanos, "ttlNanos must not be null");
+        }
+
+        private boolean isExpired(long now) {
+            return ttlNanos.isPresent() && now - registeredAt > ttlNanos.orElseThrow();
+        }
+    }
+
+    private record LegacyEntry(Cache<?, ?> cache, CacheDescriptor<?, ?> descriptor)
+            implements RegistryEntry {
+        private LegacyEntry {
             Objects.requireNonNull(cache, "cache must not be null");
-            Objects.requireNonNull(ttl, "ttl must not be null");
-            // descriptor is intentionally nullable: string-registered entries carry no witness.
         }
     }
 

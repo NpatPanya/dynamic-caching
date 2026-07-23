@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>Tests verify that CacheGroup correctly manages named cache component registration,
  * enforces uniqueness, provides accurate cross-cutting operations, and returns unmodifiable views.
  * Each test focuses on a single acceptance criterion from the design specification (§8).
- */
+ */@Deprecated
 class CacheFacadeTest {
 
     private static final Logger logger = LogManager.getLogger(CacheFacadeTest.class);

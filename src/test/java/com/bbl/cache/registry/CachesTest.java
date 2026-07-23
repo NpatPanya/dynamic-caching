@@ -1,6 +1,6 @@
 package com.bbl.cache.registry;
 
-import com.bbl.cache.support.ViewFactory;
+import com.bbl.cache.support.DataFilter;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@link IllegalStateException} preserved unchanged from
  * {@link com.bbl.cache.support.CacheFactory}.
  */
+@SuppressWarnings("deprecation")
 class CachesTest {
 
     private record Item(String id, String category, String value) {
@@ -112,7 +113,7 @@ class CachesTest {
 
     @Test
     void filteredListViaViewFactoryThenIndexedByCachesComposesCorrectly() {
-        List<Item> fruitsOnly = ViewFactory.filteredView(sampleData(), item -> "fruit".equals(item.category()));
+        List<Item> fruitsOnly = DataFilter.filteredView(sampleData(), item -> "fruit".equals(item.category()));
         Cache<String, Item> cache = Caches.fromList(fruitsOnly, Item::id);
 
         assertEquals(2, cache.size());

@@ -1,6 +1,7 @@
 package com.bbl.cache.registry;
 
 import com.bbl.cache.support.CacheFactory;
+import com.bbl.cache.support.DataFilter;
 
 import java.util.List;
 import java.util.Map;
@@ -16,12 +17,15 @@ import java.util.function.Function;
  * {@link IllegalStateException} semantics unchanged), then wraps the
  * resulting immutable map in a read-only {@link ImmutableMapCache}.
  *
- * <p>Not to be confused with {@link com.bbl.cache.support.ViewFactory}, which
+ * <p>Not to be confused with {@link DataFilter}, which
  * produces raw derived collections ({@code List}/{@code Map} views -- filter,
  * sort, map, group, unique) over already-materialized data, with no
  * {@code Cache} wrapper and no registration. Compose the two: filter with
- * {@code ViewFactory}, then index the result with {@code Caches}.
+ * {@code DataFilter}, then index the result with {@code Caches}.
+ *
+ * @deprecated Transform collections with {@link DataFilter} and register raw data with {@link RegistryKey}.
  */
+@Deprecated
 public final class Caches {
 
     private Caches() {

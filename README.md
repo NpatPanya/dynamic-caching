@@ -1,132 +1,105 @@
 # dynamic-caching
 
-A small Java library for holding startup-loaded reference data in memory as immutable,
-thread-safe map snapshots — no TTL, no eviction, no async loading. You load a collection once
-(typically at application startup) and read from it concurrently afterward.
+A Java 17 library for registering typed, immutable in-memory data snapshots. A registry entry may contain a domain object, list, map, or nested map and can optionally expire after a TTL.
 
 ## Requirements
 
 - Java 17+
-- `org.apache.logging.log4j:log4j-core` (each cache logs through an injected `Logger`)
-- `jakarta.enterprise.cdi-api` (example beans are CDI-managed; the core library itself has no CDI dependency)
+- Maven 3.8+
 
-## Install
-
-Not yet published to a repository. Build locally with Maven:
+## Build
 
 ```bash
+mvn test
 mvn install
 ```
 
-```xml
-<dependency>
-    <groupId>com.bbl.cache</groupId>
-    <artifactId>dynamic-caching</artifactId>
-    <version>1.0-SNAPSHOT</version>
-</dependency>
-```
+The artifact coordinates are `com.bbl.cache:dynamic-caching:1.0-SNAPSHOT`.
 
-## Core concepts
+## Typed registry
 
-The library models three cache "shapes", all built on the same immutable-snapshot approach:
-
-| Shape | Structure | Use case |
-|---|---|---|
-| `UniqueCache<K, V>` | `Map<K, V>` | one value per key — reference data |
-| `GroupedCache<K, V>` | `Map<K, List<V>>` | one-to-many — all values sharing a key |
-| `DoubleKeyCache<K1, K2, V>` | `Map<K1, Map<K2, V>>` | two-level lookup, e.g. group then unique key within group |
-
-Each shape is `final` (not meant to be subclassed) and is constructed through `CacheFacade`, which
-lets a single application bean hold several cache shapes side by side under one registry instead of
-forcing inheritance from a single base cache class:
+Declare each registry key once as a shared constant. The key carries the complete compile-time data type, including generic collection parameters:
 
 ```java
-private final CacheFacade caches = new CacheFacade("ProviderCatalogCache", log);
+private static final RegistryKey<Map<String, String>> SETTINGS =
+        RegistryKey.map("settings", String.class, String.class);
 
-private final UniqueCache<String, Provider> byId = caches.uniqueCache("byId");
-private final GroupedCache<String, Provider> byCountry = caches.groupedCache("byCountry");
-private final DoubleKeyCache<String, String, Provider> byServiceProvider =
-        caches.doubleKeyCache("byServiceProvider");
+CacheRegistry registry = CacheRegistry.getInstance();
+registry.register(SETTINGS, Map.of("theme", "dark"));
+
+String theme = registry.get(SETTINGS)
+        .orElseThrow()
+        .get("theme");
 ```
 
-`CacheFacade` enforces unique component names within the bean and provides cross-cutting
-operations across all of a bean's caches: `clearAll()`, `sizes()`, `totalSize()`, `names()`.
+No cast is needed. Another `RegistryKey` instance cannot claim an occupied name, even when it declares the same Java type. Keep keys in shared constants and pass the same instance to `register`, `get`, `reregister`, and `unregister`.
 
-### Loading data: stage, then publish
+Available key factories are:
 
-Each cache separates *building* a snapshot from *publishing* it:
+- `RegistryKey.value(name, Type.class)` for a scalar or domain object
+- `RegistryKey.list(name, Element.class)`
+- `RegistryKey.set(name, Element.class)`
+- `RegistryKey.map(name, Key.class, Value.class)`
+- `RegistryKey.nestedMap(name, OuterKey.class, InnerKey.class, Value.class)`
 
-- `stage(collection, keyExtractor[, valueExtractor])` builds and returns a new immutable snapshot
-  without touching the live cache. Throws `IllegalStateException` on a duplicate key.
-- `publish(snapshot)` atomically swaps the live snapshot in with a single volatile write. Cannot throw.
-- `load(...)` is a convenience for `publish(stage(...))` — build and publish in one call.
+List, set, map, nested collection, and array containers are copied recursively. Registered containers cannot be changed through the original source or returned value. Custom domain objects inside a snapshot remain the same references, so immutable records or classes are recommended.
 
-Separating the two matters when a bean owns multiple cache views that must refresh together:
-stage all of them first (so any duplicate-key failure aborts before anything is published), then
-publish all of them, so no view is ever left half-updated relative to the others:
+`register` rejects duplicate names. `reregister` atomically creates or replaces data for the same key. Changing the type assigned to a name requires `unregister` followed by `register`.
+
+## Filtering and shaping data
+
+`DataFilter` is responsible for filtering source collections and selecting the output shape. Bean fields are expressed with type-safe method references and conditions with predicates:
 
 ```java
-public void refresh(List<String> serviceNames) {
-    List<Provider> src = List.copyOf(repo.findByServiceNames(serviceNames)); // materialize once
+List<Customer> active =
+        DataFilter.filterToList(customers, Customer::active);
 
-    var idMap = byId.stage(src, Provider::getId);
-    var countryMap = byCountry.stage(src, Provider::getCountry);
-    var svcProvMap = byServiceProvider.stage(src, Provider::getServiceName, Provider::getId);
+Map<Long, Customer> activeById =
+        DataFilter.filterToMap(
+                customers, Customer::active, Customer::id);
 
-    byId.publish(idMap);
-    byCountry.publish(countryMap);
-    byServiceProvider.publish(svcProvMap);
-}
+Map<String, Map<Long, Customer>> activeByCountryAndId =
+        DataFilter.filterToNestedMap(
+                customers,
+                Customer::active,
+                Customer::country,
+                Customer::id);
 ```
 
-If the source and cached value types differ, pass a `valueExtractor` alongside the key
-extractor(s) — every shape has an overload for this:
+Each map method also has a `valueExtractor` overload when the cached value differs from the source object. Results are immutable. Duplicate keys and duplicate nested key pairs throw `IllegalStateException`; null extractor results are rejected.
+
+Filtering stays separate from registration:
 
 ```java
-GroupedCache<String, String> countryToServiceNames = caches.groupedCache("countryToServiceNames");
-countryToServiceNames.load(providers, Provider::getCountry, Provider::getServiceName);
+private static final RegistryKey<Map<Long, Customer>> ACTIVE_CUSTOMERS =
+        RegistryKey.map("active-customers", Long.class, Customer.class);
+
+registry.register(
+        ACTIVE_CUSTOMERS,
+        DataFilter.filterToMap(customers, Customer::active, Customer::id));
 ```
 
-### Reading
+## TTL and refresh
 
-Reads go directly through the typed field, not through `CacheFacade`:
+TTL belongs to one complete registered snapshot:
 
 ```java
-Provider p = byId.get("p-1");                  // null if absent
-List<Provider> inUs = byCountry.get("US");      // empty list if absent, never null
-Provider match = byServiceProvider.get("svc", "p-1");
+registry.register(ACTIVE_CUSTOMERS, activeById, Duration.ofMinutes(10));
 ```
 
-`getOrDefault(key, def)` and `containsKey(key)` are also available on every shape.
+Before the boundary, `get` returns the snapshot. After the boundary, it returns `Optional.empty()` and lazily removes only that expired registration. There is no automatic reload; publish a fresh snapshot with `reregister`, which also starts a fresh TTL:
 
-## Full worked examples
+```java
+registry.reregister(ACTIVE_CUSTOMERS, refreshed, Duration.ofMinutes(10));
+```
 
-- `src/main/java/com/bbl/cache/example/ProviderCatalogCache.java` — a single bean holding all
-  three shapes side by side, populated from one source fetch with failure-atomic refresh.
-- `src/main/java/com/bbl/cache/example/CompositeDoubleKeyCacheUsage.java` — a `DoubleKeyCache`
-  used on its own inside a bean.
+Registration and replacement are atomic. Concurrent readers see either the old immutable snapshot or the new one.
 
-These example files intentionally reference illustrative entity/repository types
-(`src/main/java/com/bbl/cache/example/entity/`) that model a plausible caller, not the library's
-own dependencies, and are excluded from the module's own build (see `pom.xml`'s
-`maven-compiler-plugin` exclude and `docs/cache-registry-design.md`). Read them for the pattern,
-don't expect them to compile standalone.
+## Migration from the wrapper API
 
-For runnable, test-verified usage, see `src/test/java/com/bbl/cache/registry/`
-(`UniqueCacheTest`, `GroupedCacheTest`, `DoubleKeyCacheTest`, `CacheFacadeTest`,
-`MultiShapeCacheTest`).
+`Cache`, `Caches`, `CacheDescriptor`, and `TtlCache`, together with the corresponding `CacheRegistry` overloads, are deprecated migration adapters. Existing callers remain functional, but new code should register raw data with `RegistryKey<T>` and use `DataFilter` for collection transformations.
 
-## Design notes
-
-See `docs/cache-registry-design.md` for the full design rationale (why the shapes are `final`
-and constructed via a facade rather than subclassed, why `stage`/`publish` are split, atomicity
-guarantees, etc.).
-
-- Backed by `Collectors.toUnmodifiableMap` / immutable `List.copyOf` snapshots — safe for the
-  startup write burst followed by concurrent reads.
-- `publish()` is a single `volatile` field write and cannot throw; a failed `stage()` never
-  affects the live cache.
-- Out of scope: TTL/eviction, async/background loading, partial/incremental updates.
+Runnable examples are in `src/main/java/com/bbl/cache/examples/`.
 
 ## Testing
 

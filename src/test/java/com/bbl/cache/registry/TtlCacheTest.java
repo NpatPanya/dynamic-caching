@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * delegate mutation: reads before the TTL boundary succeed, reads after
  * return the empty view across all six {@link Cache} methods.
  */
+@SuppressWarnings("deprecation")
 class TtlCacheTest {
 
     @Test
@@ -105,6 +106,8 @@ class TtlCacheTest {
                 () -> new TtlCache<>(delegate, Duration.ZERO, ticker::get));
         assertThrows(IllegalArgumentException.class,
                 () -> new TtlCache<>(delegate, Duration.ofSeconds(-1), ticker::get));
+        assertThrows(IllegalArgumentException.class,
+                () -> new TtlCache<>(delegate, Duration.ofNanos(Long.MAX_VALUE), ticker::get));
     }
 
     @Test

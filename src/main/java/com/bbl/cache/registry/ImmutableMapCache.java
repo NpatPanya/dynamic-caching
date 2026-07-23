@@ -10,6 +10,7 @@ import java.util.Objects;
  * <p>The supplied data is defensively copied via {@link Map#copyOf(Map)} so
  * the resulting cache is immune to later mutation of the source map.
  */
+@SuppressWarnings("deprecation")
 final class ImmutableMapCache<K, V> implements Cache<K, V> {
 
     private final Map<K, V> data;

@@ -50,7 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * coverage of the real {@code ProviderCatalogCache} bean itself remains
  * blocked by its missing illustrative types and is tracked, not silently
  * dropped.
- */
+ */@Deprecated
 class MultiShapeCacheTest {
 
     private static final Logger logger = LogManager.getLogger(MultiShapeCacheTest.class);

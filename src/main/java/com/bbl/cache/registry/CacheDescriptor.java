@@ -21,7 +21,10 @@ import java.util.Objects;
  * <p>Equality is defined over the exact tuple {@code (name, keyType,
  * valueType)} using {@link Object#equals(Object)} semantics -- never
  * {@link Class#isAssignableFrom(Class)} or any subtype/widening check.
+ *
+ * @deprecated Use one shared {@link RegistryKey} carrying the complete registered data type.
  */
+@Deprecated
 public final class CacheDescriptor<K, V> {
 
     private final String name;

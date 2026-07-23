@@ -31,7 +31,10 @@ import java.util.function.LongSupplier;
  * re-registers a fresh snapshot (see {@link CacheRegistry#reregister}); it
  * does not self-reload. This is a deliberate design choice, not a
  * regression -- see {@code docs/cache-registry-v3-design.md} section 1(b).
+ *
+ * @deprecated Supply TTL to {@link CacheRegistry#register(RegistryKey, Object, java.time.Duration)}.
  */
+@Deprecated
 public final class TtlCache<K, V> implements Cache<K, V> {
 
     private final Cache<K, V> delegate;
@@ -51,6 +54,10 @@ public final class TtlCache<K, V> implements Cache<K, V> {
         }
         try {
             this.ttlNanos = ttl.toNanos();
+            if (ttlNanos == Long.MAX_VALUE) {
+                throw new IllegalArgumentException(
+                        "ttl must be less than Long.MAX_VALUE nanoseconds");
+            }
         } catch (ArithmeticException ex) {
             throw new IllegalArgumentException("ttl is too large", ex);
         }

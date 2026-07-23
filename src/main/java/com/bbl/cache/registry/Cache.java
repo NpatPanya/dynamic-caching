@@ -17,7 +17,10 @@ import java.util.Map;
  * {@code invalidate}, {@code invalidateAll}) live on {@link KeyedCache},
  * the deprecated inheritance-era sub-interface. New code never uses
  * {@code KeyedCache}.
+ *
+ * @deprecated Register raw data with {@link RegistryKey} and {@link CacheRegistry} instead.
  */
+@Deprecated
 public interface Cache<K, V> {
     V get(K key);
 
