@@ -4,8 +4,8 @@ package com.bbl.cache.example;
 
 import com.bbl.cache.example.entity.ResponseEntity;
 import com.bbl.cache.example.entity.ResponseRepository;
-import com.bbl.cache.registry.CacheFacade;
-import com.bbl.cache.registry.DoubleKeyCache;
+import com.bbl.cache.registry.deprecated.CacheFacade;
+import com.bbl.cache.registry.deprecated.DoubleKeyCache;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.apache.logging.log4j.LogManager;

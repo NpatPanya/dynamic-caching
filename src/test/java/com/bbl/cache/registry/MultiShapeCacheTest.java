@@ -1,5 +1,9 @@
 package com.bbl.cache.registry;
 
+import com.bbl.cache.registry.deprecated.CacheFacade;
+import com.bbl.cache.registry.deprecated.DoubleKeyCache;
+import com.bbl.cache.registry.deprecated.GroupedCache;
+import com.bbl.cache.registry.deprecated.UniqueCache;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.DisplayName;
@@ -25,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <em>hold</em> all three shapes as fields.
  *
  * <p>The design doc's illustrative example ({@code ProviderCatalogCache},
- * §6.4 of {@code docs/cache-registry-design.md}) references {@code Provider}
+ * §6.4 of {@code docs/cache-registry-design-requirementv1.md}) references {@code Provider}
  * / {@code ProviderRepositoryPort} types that don't exist in this module, so
  * {@code com/bbl/cache/example/**} is excluded from compilation in
  * {@code pom.xml} and is never compile-checked. This test does not depend on

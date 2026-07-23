@@ -1,5 +1,6 @@
 package com.bbl.cache.registry;
 
+import com.bbl.cache.registry.deprecated.UniqueCache;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.junit.jupiter.api.AfterEach;

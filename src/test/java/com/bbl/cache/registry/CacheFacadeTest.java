@@ -1,5 +1,6 @@
 package com.bbl.cache.registry;
 
+import com.bbl.cache.registry.deprecated.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.BeforeEach;

@@ -581,7 +581,7 @@ handoff:
     - Do NOT make shape components or CacheGroup CDI beans (plain POJOs owned by the bean).
     - Do NOT resolve cross-view read atomicity silently — it is an accepted skew (4.2); escalate if a consumer needs strict atomicity.
   produced_artifacts:
-    - path: docs/cache-registry-design.md
+    - path: docs/cache-registry-design-requirementv1.md
       description: This spec — schemas, interfaces, module boundaries, atomicity semantics, migration sketches, per-component verification hooks.
   definition_of_done: backend-developer can implement AbstractMapCache (sealed), the three final shape components, CacheGroup, and the migrated + new example beans with no further architectural judgment call; tester can assert every §8 hook including failure atomicity.
   notes: >
