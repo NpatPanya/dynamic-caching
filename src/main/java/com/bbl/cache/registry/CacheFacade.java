@@ -2,11 +2,7 @@ package com.bbl.cache.registry;
 
 import org.apache.logging.log4j.Logger;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 /**
  * A registry that manages named cache components and provides

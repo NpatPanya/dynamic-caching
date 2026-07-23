@@ -1,5 +1,6 @@
 package com.bbl.cache.registry;
 
+
 import org.apache.logging.log4j.Logger;
 
 import java.util.Collection;
@@ -119,7 +120,7 @@ public sealed abstract class AbstractMapCache<K, S> implements KeyedCache<K, S>
      * @param key cache key involved in the operation
      * @param value value returned or produced by the operation
      */
-    protected void logItem(String action, Object key, Object value){
+    protected void logItem(String action, Object key, Object value) {
 
         if (!logger().isTraceEnabled()) {
             return;

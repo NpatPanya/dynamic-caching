@@ -1,6 +1,7 @@
 package com.bbl.cache.registry;
 
-import com.bbl.cache.support.CacheFactory;
+
+import com.bbl.common.cache.temp.support.CacheFactory;
 import org.apache.logging.log4j.Logger;
 
 import java.util.Collection;
