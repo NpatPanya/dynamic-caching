@@ -1,18 +1,16 @@
 package com.bbl.cache.examples;
 
 import com.bbl.cache.registry.CacheRegistry;
-import com.bbl.cache.registry.RegistryKey;
 import com.bbl.cache.support.DataFilter;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
-/** Registers an immutable raw-data snapshot with a per-registration TTL. */
+/** Registers an immutable string-keyed snapshot with a per-registration TTL. */
 public final class CustomDataWithTtlExample {
 
-    private static final RegistryKey<Map<Long, Customer>> CUSTOMERS =
-            RegistryKey.map("example-customers", Long.class, Customer.class);
+    private static final String CUSTOMERS = "example-customers";
 
     private CustomDataWithTtlExample() {
     }
@@ -28,9 +26,8 @@ public final class CustomDataWithTtlExample {
                 DataFilter.filterToMap(customers, ignored -> true, Customer::id),
                 Duration.ofMinutes(10));
 
-        Customer customer = registry.get(CUSTOMERS)
-                .orElseThrow()
-                .get(1001L);
+        Map<Long, Customer> customersById = registry.get(CUSTOMERS);
+        Customer customer = customersById.get(1001L);
         System.out.println("Customer: " + customer.name());
 
         registry.unregister(CUSTOMERS);

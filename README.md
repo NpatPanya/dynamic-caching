@@ -1,6 +1,6 @@
 # dynamic-caching
 
-A Java 17 library for registering typed, immutable in-memory data snapshots. A registry entry may contain a domain object, list, map, or nested map and can optionally expire after a TTL.
+A Java 17 library for registering immutable in-memory data snapshots under simple string names. A registry entry may contain a domain object, list, map, or nested map and can optionally expire after a TTL.
 
 ## Requirements
 
@@ -16,39 +16,47 @@ mvn install
 
 The artifact coordinates are `com.bbl.cache:dynamic-caching:1.0-SNAPSHOT`.
 
-## Typed registry
+## String-keyed registry
 
-Declare each registry key once as a shared constant. The key carries the complete compile-time data type, including generic collection parameters:
+Use stable string constants and declare the expected return type strictly:
 
 ```java
-private static final RegistryKey<Map<String, String>> SETTINGS =
-        RegistryKey.map("settings", String.class, String.class);
+private static final String SETTINGS = "settings";
 
 CacheRegistry registry = CacheRegistry.getInstance();
 registry.register(SETTINGS, Map.of("theme", "dark"));
 
-String theme = registry.get(SETTINGS)
-        .orElseThrow()
-        .get("theme");
+Map<String, String> settings = registry.get(SETTINGS);
+String theme = settings.get("theme");
 ```
 
-No cast is needed. Another `RegistryKey` instance cannot claim an occupied name, even when it declares the same Java type. Keep keys in shared constants and pass the same instance to `register`, `get`, `reregister`, and `unregister`.
+The assignment type tells Java what `get` should return. No caller cast is needed. Type correctness is the caller's responsibility: declaring a wrong raw type throws `ClassCastException`. Java type erasure means a wrong nested generic type may fail only when an element is read.
 
-Available key factories are:
+Registry lifecycle:
 
-- `RegistryKey.value(name, Type.class)` for a scalar or domain object
-- `RegistryKey.list(name, Element.class)`
-- `RegistryKey.set(name, Element.class)`
-- `RegistryKey.map(name, Key.class, Value.class)`
-- `RegistryKey.nestedMap(name, OuterKey.class, InnerKey.class, Value.class)`
+```java
+registry.register("customers", initialCustomers);
 
-List, set, map, nested collection, and array containers are copied recursively. Registered containers cannot be changed through the original source or returned value. Custom domain objects inside a snapshot remain the same references, so immutable records or classes are recommended.
+Map<Long, Customer> current = registry.get("customers");
+Optional<Map<Long, Customer>> optional = registry.find("customers");
 
-`register` rejects duplicate names. `reregister` atomically creates or replaces data for the same key. Changing the type assigned to a name requires `unregister` followed by `register`.
+registry.reregister("customers", refreshedCustomers);
+registry.unregister("customers");
+registry.invalidateAll();
+```
+
+- `register` rejects duplicate names.
+- `get` throws `NoSuchElementException` when the name is missing or expired.
+- `find` returns `Optional.empty()` when missing or expired.
+- `reregister` atomically replaces the existing snapshot under the same name. It may replace it with another type and starts a fresh TTL when supplied.
+- `unregister` removes one name.
+- `invalidateAll` removes every registration without mutating snapshots already returned to callers.
+
+List, set, map, general collection, nested collection, and array containers are copied recursively. Collections are normalized to immutable `List`, `Set`, `Map`, or `Collection` views, so use those interface types for strict assignment; a concrete expectation such as `ArrayList` is a different raw type and may throw `ClassCastException`. Arrays are defensively copied on every read, so mutating a returned array never changes the stored snapshot. Custom domain objects inside a snapshot remain the same references, so immutable records or classes are recommended.
 
 ## Filtering and shaping data
 
-`DataFilter` is responsible for filtering source collections and selecting the output shape. Bean fields are expressed with type-safe method references and conditions with predicates:
+`DataFilter` filters source collections and selects the output shape. Bean fields use method references and conditions use predicates:
 
 ```java
 List<Customer> active =
@@ -66,38 +74,30 @@ Map<String, Map<Long, Customer>> activeByCountryAndId =
                 Customer::id);
 ```
 
-Each map method also has a `valueExtractor` overload when the cached value differs from the source object. Results are immutable. Duplicate keys and duplicate nested key pairs throw `IllegalStateException`; null extractor results are rejected.
-
-Filtering stays separate from registration:
-
-```java
-private static final RegistryKey<Map<Long, Customer>> ACTIVE_CUSTOMERS =
-        RegistryKey.map("active-customers", Long.class, Customer.class);
-
-registry.register(
-        ACTIVE_CUSTOMERS,
-        DataFilter.filterToMap(customers, Customer::active, Customer::id));
-```
+Each map method also has a `valueExtractor` overload. Results are immutable. Duplicate keys and duplicate nested key pairs throw `IllegalStateException`; null extractor results are rejected.
 
 ## TTL and refresh
 
 TTL belongs to one complete registered snapshot:
 
 ```java
-registry.register(ACTIVE_CUSTOMERS, activeById, Duration.ofMinutes(10));
+registry.register("active-customers", activeById, Duration.ofMinutes(10));
 ```
 
-Before the boundary, `get` returns the snapshot. After the boundary, it returns `Optional.empty()` and lazily removes only that expired registration. There is no automatic reload; publish a fresh snapshot with `reregister`, which also starts a fresh TTL:
+After expiration, `find` returns empty and `get` throws `NoSuchElementException`. There is no automatic reload. Publish a replacement and start a fresh TTL with:
 
 ```java
-registry.reregister(ACTIVE_CUSTOMERS, refreshed, Duration.ofMinutes(10));
+registry.reregister(
+        "active-customers",
+        refreshed,
+        Duration.ofMinutes(10));
 ```
 
-Registration and replacement are atomic. Concurrent readers see either the old immutable snapshot or the new one.
+Registration and replacement are atomic. Concurrent readers see either the old immutable snapshot or the new one. References obtained before replacement remain valid.
 
-## Migration from the wrapper API
+## Deprecated APIs
 
-`Cache`, `Caches`, `CacheDescriptor`, and `TtlCache`, together with the corresponding `CacheRegistry` overloads, are deprecated migration adapters. Existing callers remain functional, but new code should register raw data with `RegistryKey<T>` and use `DataFilter` for collection transformations.
+`RegistryKey<T>`, `Cache`, `Caches`, `CacheDescriptor`, and `TtlCache` remain functional migration APIs but are deprecated. Legacy cache-wrapper lookup is available as `getCache(String)` so that the primary `get(String)` can return raw registered data directly.
 
 Runnable examples are in `src/main/java/com/bbl/cache/examples/`.
 

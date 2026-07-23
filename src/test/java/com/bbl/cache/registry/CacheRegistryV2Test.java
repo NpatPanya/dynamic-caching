@@ -52,7 +52,7 @@ class CacheRegistryV2Test {
 
         assertSame(delegate, cache);
         assertEquals("value", cache.get("key"));
-        assertEquals("value", registry.get("forever").orElseThrow().get("key"));
+        assertEquals("value", registry.getCache("forever").orElseThrow().get("key"));
     }
 
     @Test
@@ -64,7 +64,7 @@ class CacheRegistryV2Test {
 
         assertNotSame(delegate, registered);
         assertTrue(registered instanceof TtlCache);
-        assertSame(registered, registry.get("ttl").orElseThrow());
+        assertSame(registered, registry.getCache("ttl").orElseThrow());
     }
 
     @Test
@@ -101,7 +101,7 @@ class CacheRegistryV2Test {
 
             assertEquals(1, successes);
             assertEquals(racers - 1, duplicates);
-            assertSame(winner, registry.get("race").orElseThrow());
+            assertSame(winner, registry.getCache("race").orElseThrow());
         } finally {
             executor.shutdownNow();
         }
@@ -117,7 +117,7 @@ class CacheRegistryV2Test {
         try {
             Future<String> read = executor.submit(() -> {
                 Cache<Object, Object> acquired =
-                        registry.get("in-flight").orElseThrow();
+                        registry.getCache("in-flight").orElseThrow();
                 obtainedReference.countDown();
                 assertTrue(continueRead.await(5, TimeUnit.SECONDS));
                 return (String) acquired.get("key");
@@ -128,7 +128,7 @@ class CacheRegistryV2Test {
             continueRead.countDown();
 
             assertEquals("value", read.get(5, TimeUnit.SECONDS));
-            assertEquals(Optional.empty(), registry.get("in-flight"));
+            assertEquals(Optional.empty(), registry.getCache("in-flight"));
             assertFalse(registry.unregister("in-flight"));
         } finally {
             executor.shutdownNow();
@@ -231,7 +231,7 @@ class CacheRegistryV2Test {
         registry.reregister("reload-key-3", Caches.fromMap(Map.of("key", "v2")));
 
         assertThrows(IllegalStateException.class, () -> registry.get(descriptor));
-        assertEquals("v2", registry.get("reload-key-3").orElseThrow().get("key"));
+        assertEquals("v2", registry.getCache("reload-key-3").orElseThrow().get("key"));
     }
 
     @Test
@@ -239,7 +239,7 @@ class CacheRegistryV2Test {
         registry.register("legacy-generic", Caches.fromMap(Map.of("key", "value")));
 
         Cache<String, String> retrieved =
-                registry.<String, String>get("legacy-generic").orElseThrow();
+                registry.<String, String>getCache("legacy-generic").orElseThrow();
 
         assertEquals("value", retrieved.get("key"));
     }

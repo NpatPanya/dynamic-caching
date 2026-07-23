@@ -22,7 +22,7 @@ import java.util.Objects;
  * valueType)} using {@link Object#equals(Object)} semantics -- never
  * {@link Class#isAssignableFrom(Class)} or any subtype/widening check.
  *
- * @deprecated Use one shared {@link RegistryKey} carrying the complete registered data type.
+ * @deprecated Use string-keyed {@link CacheRegistry} methods with strict assignment types.
  */
 @Deprecated
 public final class CacheDescriptor<K, V> {

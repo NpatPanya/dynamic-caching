@@ -1,17 +1,15 @@
 package com.bbl.cache.examples;
 
 import com.bbl.cache.registry.CacheRegistry;
-import com.bbl.cache.registry.RegistryKey;
 import com.bbl.cache.support.DataFilter;
 
 import java.util.List;
 import java.util.Map;
 
-/** Exact generic retrieval through a shared RegistryKey. */
+/** Strict assignment typing with a reusable string registry name. */
 public final class TypeSafeCacheRegistryExample {
 
-    private static final RegistryKey<Map<Long, Customer>> CUSTOMERS =
-            RegistryKey.map("example-typed-customers", Long.class, Customer.class);
+    private static final String CUSTOMERS = "example-typed-customers";
 
     private TypeSafeCacheRegistryExample() {
     }
@@ -26,9 +24,8 @@ public final class TypeSafeCacheRegistryExample {
                 CUSTOMERS,
                 DataFilter.filterToMap(customers, ignored -> true, Customer::id));
 
-        Customer customer = registry.get(CUSTOMERS)
-                .orElseThrow()
-                .get(1002L);
+        Map<Long, Customer> customersById = registry.get(CUSTOMERS);
+        Customer customer = customersById.get(1002L);
         System.out.println("Customer: " + customer.name());
 
         registry.unregister(CUSTOMERS);

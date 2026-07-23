@@ -23,7 +23,7 @@ import java.util.function.Function;
  * {@code Cache} wrapper and no registration. Compose the two: filter with
  * {@code DataFilter}, then index the result with {@code Caches}.
  *
- * @deprecated Transform collections with {@link DataFilter} and register raw data with {@link RegistryKey}.
+ * @deprecated Transform collections with {@link DataFilter} and register them by string name with {@link CacheRegistry}.
  */
 @Deprecated
 public final class Caches {

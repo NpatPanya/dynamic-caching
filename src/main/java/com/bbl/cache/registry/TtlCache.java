@@ -32,7 +32,7 @@ import java.util.function.LongSupplier;
  * does not self-reload. This is a deliberate design choice, not a
  * regression -- see {@code docs/cache-registry-v3-design.md} section 1(b).
  *
- * @deprecated Supply TTL to {@link CacheRegistry#register(RegistryKey, Object, java.time.Duration)}.
+ * @deprecated Supply TTL to {@link CacheRegistry#register(String, Object, java.time.Duration)}.
  */
 @Deprecated
 public final class TtlCache<K, V> implements Cache<K, V> {

@@ -1,11 +1,6 @@
 package com.bbl.cache.registry;
 
-import java.lang.reflect.Array;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -18,7 +13,10 @@ import java.util.function.Function;
  * <p>Declare keys as shared constants and use the same instance for
  * registration and retrieval. Identity semantics prevent another key with the
  * same name from claiming an incompatible generic type.
+ *
+ * @deprecated Prefer string-keyed {@link CacheRegistry} methods and strict assignment types.
  */
+@Deprecated
 public final class RegistryKey<T> {
 
     private final String name;
@@ -42,7 +40,7 @@ public final class RegistryKey<T> {
             if (!valueType.isInstance(value)) {
                 throw typeMismatch(name, valueType, value);
             }
-            return cast(freeze(value));
+            return SnapshotSupport.snapshot(value);
         };
         return new RegistryKey<>(name, copier, copier);
     }
@@ -52,7 +50,7 @@ public final class RegistryKey<T> {
         Function<List<E>, List<E>> snapshotter = source -> {
             Objects.requireNonNull(source, "registered data must not be null");
             validateElements(name, source, elementType, "list element");
-            return cast(freeze(source));
+            return SnapshotSupport.snapshot(source);
         };
         return new RegistryKey<>(name, snapshotter, Function.identity());
     }
@@ -62,7 +60,7 @@ public final class RegistryKey<T> {
         Function<Set<E>, Set<E>> snapshotter = source -> {
             Objects.requireNonNull(source, "registered data must not be null");
             validateElements(name, source, elementType, "set element");
-            return cast(freeze(source));
+            return SnapshotSupport.snapshot(source);
         };
         return new RegistryKey<>(name, snapshotter, Function.identity());
     }
@@ -74,7 +72,7 @@ public final class RegistryKey<T> {
         Function<Map<K, V>, Map<K, V>> snapshotter = source -> {
             Objects.requireNonNull(source, "registered data must not be null");
             validateMap(name, source, keyType, valueType);
-            return cast(freeze(source));
+            return SnapshotSupport.snapshot(source);
         };
         return new RegistryKey<>(name, snapshotter, Function.identity());
     }
@@ -94,7 +92,7 @@ public final class RegistryKey<T> {
                 }
                 validateMap(name, inner, innerKeyType, valueType);
             }
-            return cast(freeze(source));
+            return SnapshotSupport.snapshot(source);
         };
         return new RegistryKey<>(name, snapshotter, Function.identity());
     }
@@ -108,11 +106,13 @@ public final class RegistryKey<T> {
     }
 
     boolean requiresDefensiveCopy(T value) {
-        return containsArray(value);
+        return SnapshotSupport.requiresDefensiveCopy(value);
     }
 
     T expose(T value, boolean defensiveCopy) {
-        return defensiveCopy ? cast(freeze(value)) : exposer.apply(value);
+        return defensiveCopy
+                ? SnapshotSupport.expose(value, true)
+                : exposer.apply(value);
     }
 
     private static String validateName(String name) {
@@ -155,56 +155,6 @@ public final class RegistryKey<T> {
         return new IllegalArgumentException(
                 "Registry key '" + name + "' requires " + expectedType.getName()
                         + " but received " + value.getClass().getName());
-    }
-
-    private static boolean containsArray(Object value) {
-        if (value.getClass().isArray()) {
-            return true;
-        }
-        if (value instanceof Map<?, ?> map) {
-            return map.entrySet().stream()
-                    .anyMatch(entry -> containsArray(entry.getKey())
-                            || containsArray(entry.getValue()));
-        }
-        if (value instanceof Collection<?> collection) {
-            return collection.stream().anyMatch(RegistryKey::containsArray);
-        }
-        return false;
-    }
-    private static Object freeze(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<Object, Object> copy = new LinkedHashMap<>();
-            map.forEach((key, nestedValue) ->
-                    copy.put(freeze(Objects.requireNonNull(key, "map key must not be null")),
-                            freeze(Objects.requireNonNull(nestedValue, "map value must not be null"))));
-            return Collections.unmodifiableMap(copy);
-        }
-        if (value instanceof List<?> list) {
-            List<Object> copy = new ArrayList<>(list.size());
-            list.forEach(element ->
-                    copy.add(freeze(Objects.requireNonNull(element, "list element must not be null"))));
-            return Collections.unmodifiableList(copy);
-        }
-        if (value instanceof Set<?> set) {
-            Set<Object> copy = new LinkedHashSet<>();
-            set.forEach(element ->
-                    copy.add(freeze(Objects.requireNonNull(element, "set element must not be null"))));
-            return Collections.unmodifiableSet(copy);
-        }
-        if (value.getClass().isArray()) {
-            int length = Array.getLength(value);
-            Object copy = Array.newInstance(value.getClass().getComponentType(), length);
-            for (int i = 0; i < length; i++) {
-                Array.set(copy, i, freeze(Array.get(value, i)));
-            }
-            return copy;
-        }
-        return value;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <R> R cast(Object value) {
-        return (R) value;
     }
 
     @Override

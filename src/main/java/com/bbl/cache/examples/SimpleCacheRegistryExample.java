@@ -1,24 +1,19 @@
 package com.bbl.cache.examples;
 
 import com.bbl.cache.registry.CacheRegistry;
-import com.bbl.cache.registry.RegistryKey;
 import com.bbl.cache.support.DataFilter;
 
 import java.util.List;
 import java.util.Map;
 
-/** Simplest typed raw-data registry and filtering usage. */
+/** Simplest string-keyed raw-data registry and filtering usage. */
 public final class SimpleCacheRegistryExample {
 
-    private static final RegistryKey<Map<String, String>> SETTINGS =
-            RegistryKey.map("example-settings", String.class, String.class);
-    private static final RegistryKey<List<Customer>> ACTIVE_CUSTOMERS =
-            RegistryKey.list("example-active-customers", Customer.class);
-    private static final RegistryKey<Map<Long, Customer>> ACTIVE_BY_ID =
-            RegistryKey.map("example-active-by-id", Long.class, Customer.class);
-    private static final RegistryKey<Map<String, Map<Long, Customer>>> ACTIVE_BY_COUNTRY_AND_ID =
-            RegistryKey.nestedMap(
-                    "example-active-by-country-and-id", String.class, Long.class, Customer.class);
+    private static final String SETTINGS = "example-settings";
+    private static final String ACTIVE_CUSTOMERS = "example-active-customers";
+    private static final String ACTIVE_BY_ID = "example-active-by-id";
+    private static final String ACTIVE_BY_COUNTRY_AND_ID =
+            "example-active-by-country-and-id";
 
     private SimpleCacheRegistryExample() {
     }
@@ -42,8 +37,10 @@ public final class SimpleCacheRegistryExample {
                 DataFilter.filterToNestedMap(
                         customers, Customer::active, Customer::country, Customer::id));
 
-        String theme = registry.get(SETTINGS).orElseThrow().get("theme");
-        Customer customer = registry.get(ACTIVE_BY_ID).orElseThrow().get(1001L);
+        Map<String, String> settings = registry.get(SETTINGS);
+        Map<Long, Customer> activeById = registry.get(ACTIVE_BY_ID);
+        String theme = settings.get("theme");
+        Customer customer = activeById.get(1001L);
         System.out.println("Theme: " + theme + ", customer: " + customer.id());
 
         registry.unregister(SETTINGS);
