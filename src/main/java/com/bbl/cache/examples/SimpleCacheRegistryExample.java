@@ -43,10 +43,10 @@ public final class SimpleCacheRegistryExample {
         Customer customer = activeById.get(1001L);
         System.out.println("Theme: " + theme + ", customer: " + customer.id());
 
-        registry.unregister(SETTINGS);
-        registry.unregister(ACTIVE_CUSTOMERS);
-        registry.unregister(ACTIVE_BY_ID);
-        registry.unregister(ACTIVE_BY_COUNTRY_AND_ID);
+        registry.remove(SETTINGS);
+        registry.remove(ACTIVE_CUSTOMERS);
+        registry.remove(ACTIVE_BY_ID);
+        registry.remove(ACTIVE_BY_COUNTRY_AND_ID);
     }
 
     private record Customer(long id, String country, boolean active) {

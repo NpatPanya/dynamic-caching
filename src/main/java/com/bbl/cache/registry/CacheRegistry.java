@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
-/** Application-wide registry for typed immutable data snapshots. */
+
 public final class CacheRegistry {
 
     private final ConcurrentHashMap<String, StringValueEntry> registry = new ConcurrentHashMap<>();
@@ -26,20 +26,13 @@ public final class CacheRegistry {
     }
 
     public <T> T register(String name, T data) {
-        return registerValue(name, data, Optional.empty(), false);
+        return registerValue(name, data, Optional.empty());
     }
 
     public <T> T register(String name, T data, Duration ttl) {
-        return registerValue(name, data, validatedTtl(ttl), false);
+        return registerValue(name, data, validatedTtl(ttl));
     }
 
-    public <T> T reregister(String name, T data) {
-        return registerValue(name, data, Optional.empty(), true);
-    }
-
-    public <T> T reregister(String name, T data, Duration ttl) {
-        return registerValue(name, data, validatedTtl(ttl), true);
-    }
 
     public <T> T get(String name) {
         return this.<T>find(name).orElseThrow(
@@ -59,7 +52,7 @@ public final class CacheRegistry {
         return Optional.of(expose(entry));
     }
 
-    public boolean unregister(String name) {
+    public boolean remove(String name) {
         validateName(name);
         return registry.remove(name) != null;
     }
@@ -69,7 +62,7 @@ public final class CacheRegistry {
     }
 
     private <T> T registerValue(
-            String name, T data, Optional<Duration> ttl, boolean replace) {
+            String name, T data, Optional<Duration> ttl) {
         validateName(name);
         Objects.requireNonNull(data, "data must not be null");
         T snapshot = SnapshotSupport.snapshot(data);
@@ -78,13 +71,11 @@ public final class CacheRegistry {
                 ticker.getAsLong(),
                 ttl.map(Duration::toNanos),
                 SnapshotSupport.requiresDefensiveCopy(snapshot));
-        if (!replace) {
-            if (registry.putIfAbsent(name, candidate) != null) {
-                throw new IllegalStateException("Registry name already registered: " + name);
-            }
-        } else {
-            registry.put(name, candidate);
+
+        if(registry.putIfAbsent(name, candidate) != null){
+            throw new IllegalArgumentException("Registry key " + name + " already registered");
         }
+
         return SnapshotSupport.expose(snapshot, candidate.defensiveCopyOnRead());
     }
 

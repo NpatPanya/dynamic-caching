@@ -28,7 +28,7 @@ public final class TypeSafeCacheRegistryExample {
         Customer customer = customersById.get(1002L);
         System.out.println("Customer: " + customer.name());
 
-        registry.unregister(CUSTOMERS);
+        registry.remove(CUSTOMERS);
     }
 
     public record Customer(long id, String name) {

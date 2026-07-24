@@ -30,7 +30,7 @@ public final class CustomDataWithTtlExample {
         Customer customer = customersById.get(1001L);
         System.out.println("Customer: " + customer.name());
 
-        registry.unregister(CUSTOMERS);
+        registry.remove(CUSTOMERS);
     }
 
     public record Customer(long id, String name) {
