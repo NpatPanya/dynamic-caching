@@ -16,7 +16,7 @@ public class CacheRegistry {
 
     private final ConcurrentHashMap<String, StringValueEntry> registry = new ConcurrentHashMap<>();
 
-    private final Map<String, CacheLoader<?>> loaderMap = new ConcurrentHashMap<>();
+    private final Map<String, LoaderRegistration> loaderMap = new ConcurrentHashMap<>();
 
     private final LongSupplier ticker;
 
@@ -28,15 +28,52 @@ public class CacheRegistry {
         this.ticker = Objects.requireNonNull(ticker, "ticker must not be null");
     }
 
+//
+//    public <T> void register(CacheLoader<T> cacheLoaders) {
+//        loaderMap.put(cacheLoaders.getName(), cacheLoaders);
+//        registerValue(cacheLoaders.getName(), cacheLoaders.load(), Optional.empty());
+//    }
 
-    public <T> void register(CacheLoader<T> cacheLoaders) {
-        loaderMap.put(cacheLoaders.getName(), cacheLoaders);
-        registerValue(cacheLoaders.getName(), cacheLoaders.load(), Optional.empty());
+    public <T> void register(CacheLoader<T> loader) {
+
+        if (loaderMap.putIfAbsent(
+                loader.getName(),
+                new LoaderRegistration(loader, Optional.empty())) != null) {
+
+            throw new IllegalArgumentException(
+                    "Loader already registered: " + loader.getName());
+        }
+
+        registerValue(
+                loader.getName(),
+                loader.load(),
+                Optional.empty()
+        );
     }
 
-    public <T> void register(CacheLoader<T> cacheLoader, Duration ttl) {
-        registerValue(cacheLoader.getName(), cacheLoader.load(), validatedTtl(ttl));
+
+    public <T> void register(
+            CacheLoader<T> loader,
+            Duration ttl) {
+
+        Optional<Duration> validated = validatedTtl(ttl);
+
+
+        if (loaderMap.putIfAbsent(
+                loader.getName(),
+                new LoaderRegistration(loader, validated)) != null) {
+
+            throw new IllegalArgumentException(
+                    "Loader already registered: " + loader.getName());
+        }
+
+        registerValue(
+                loader.getName(),
+                loader.load(),
+                validated
+        );
     }
+
 
     public <T> T register(String name, T data) {
         return registerValue(name, data, Optional.empty());
@@ -48,17 +85,24 @@ public class CacheRegistry {
 
     public void reloadCacheLoader(String name) {
 
-        CacheLoader<?> loader = loaderMap.get(name);
+        LoaderRegistration registration =
+                loaderMap.get(name);
 
-        if (loader == null) {
-            throw new IllegalArgumentException("No loader registered" + name);
+        if (registration == null) {
+            throw new IllegalArgumentException(
+                    "No loader registered: " + name);
         }
 
-        Object freshData = loader.load();
+        replaceValue(
+                name,
+                registration.cacheLoader().load(),
+                registration.ttl()
+        );
+    }
 
-        remove(name);
-
-        replaceValue(name, freshData, Optional.empty());
+    public void reloadAll() {
+        loaderMap.keySet()
+                .forEach(this::reloadCacheLoader);
     }
 
     public <T> T get(String name) {
@@ -78,6 +122,14 @@ public class CacheRegistry {
         }
         return Optional.of(expose(entry));
     }
+
+    public boolean unregister(String name) {
+
+        loaderMap.remove(name);
+
+        return registry.remove(name) != null;
+    }
+
 
     public boolean remove(String name) {
         validateName(name);
@@ -112,7 +164,7 @@ public class CacheRegistry {
             Optional<Duration> ttl) {
 
         validateName(name);
-
+        Objects.requireNonNull(data, "data must not be null");
         T snapshot = SnapshotSupport.snapshot(data);
 
         StringValueEntry candidate =
@@ -166,6 +218,10 @@ public class CacheRegistry {
         private boolean isExpired(long now) {
             return ttlNanos.isPresent() && now - registeredAt > ttlNanos.orElseThrow();
         }
+    }
+
+    private record LoaderRegistration(CacheLoader<?> cacheLoader, Optional<Duration> ttl) {
+
     }
 
 }
