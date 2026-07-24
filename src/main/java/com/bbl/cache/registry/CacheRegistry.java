@@ -1,6 +1,9 @@
 package com.bbl.cache.registry;
 
+import jakarta.enterprise.context.ApplicationScoped;
+
 import java.time.Duration;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
@@ -8,12 +11,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
 
-public final class CacheRegistry {
+@ApplicationScoped
+public class CacheRegistry {
 
     private final ConcurrentHashMap<String, StringValueEntry> registry = new ConcurrentHashMap<>();
+
+    private final Map<String, CacheLoader<?>> loaderMap = new ConcurrentHashMap<>();
+
     private final LongSupplier ticker;
 
-    private CacheRegistry() {
+    public CacheRegistry() {
         this(System::nanoTime);
     }
 
@@ -21,8 +28,14 @@ public final class CacheRegistry {
         this.ticker = Objects.requireNonNull(ticker, "ticker must not be null");
     }
 
-    public static CacheRegistry getInstance() {
-        return Holder.INSTANCE;
+
+    public <T> void register(CacheLoader<T> cacheLoaders) {
+        loaderMap.put(cacheLoaders.getName(), cacheLoaders);
+        registerValue(cacheLoaders.getName(), cacheLoaders.load(), Optional.empty());
+    }
+
+    public <T> void register(CacheLoader<T> cacheLoader, Duration ttl) {
+        registerValue(cacheLoader.getName(), cacheLoader.load(), validatedTtl(ttl));
     }
 
     public <T> T register(String name, T data) {
@@ -33,6 +46,20 @@ public final class CacheRegistry {
         return registerValue(name, data, validatedTtl(ttl));
     }
 
+    public void reloadCacheLoader(String name) {
+
+        CacheLoader<?> loader = loaderMap.get(name);
+
+        if (loader == null) {
+            throw new IllegalArgumentException("No loader registered" + name);
+        }
+
+        Object freshData = loader.load();
+
+        remove(name);
+
+        replaceValue(name, freshData, Optional.empty());
+    }
 
     public <T> T get(String name) {
         return this.<T>find(name).orElseThrow(
@@ -72,11 +99,30 @@ public final class CacheRegistry {
                 ttl.map(Duration::toNanos),
                 SnapshotSupport.requiresDefensiveCopy(snapshot));
 
-        if(registry.putIfAbsent(name, candidate) != null){
+        if (registry.putIfAbsent(name, candidate) != null) {
             throw new IllegalArgumentException("Registry key " + name + " already registered");
         }
 
         return SnapshotSupport.expose(snapshot, candidate.defensiveCopyOnRead());
+    }
+
+    private <T> void replaceValue(
+            String name,
+            T data,
+            Optional<Duration> ttl) {
+
+        validateName(name);
+
+        T snapshot = SnapshotSupport.snapshot(data);
+
+        StringValueEntry candidate =
+                new StringValueEntry(
+                        snapshot,
+                        ticker.getAsLong(),
+                        ttl.map(Duration::toNanos),
+                        SnapshotSupport.requiresDefensiveCopy(snapshot));
+
+        registry.put(name, candidate);
     }
 
     @SuppressWarnings("unchecked")
@@ -122,7 +168,4 @@ public final class CacheRegistry {
         }
     }
 
-    private static final class Holder {
-        private static final CacheRegistry INSTANCE = new CacheRegistry();
-    }
 }
